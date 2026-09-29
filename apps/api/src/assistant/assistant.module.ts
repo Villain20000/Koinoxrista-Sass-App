@@ -6,13 +6,17 @@ import { AssistantController } from './assistant.controller';
 import { AssistantService } from './assistant.service';
 import { LLM_PROVIDER, createLlmProvider } from './llm-provider';
 import { EmbeddingsModule } from './embeddings.module';
+import { RagGraphService } from './rag-graph.service';
 
 @Module({
-  // EmbeddingsModule is imported now so Phase 2 (RAG_ENGINE=langgraph) can
-  // inject EmbeddingsService into AssistantService without another migration.
+  // EmbeddingsModule provides EmbeddingsService (pgvector) for RagGraphService.
   imports: [AuditModule, NotificationsModule, EmbeddingsModule],
   controllers: [AssistantController],
-  providers: [AssistantService, { provide: LLM_PROVIDER, useFactory: createLlmProvider }],
+  providers: [
+    AssistantService,
+    RagGraphService,
+    { provide: LLM_PROVIDER, useFactory: createLlmProvider },
+  ],
   exports: [AssistantService],
 })
 export class AssistantModule {}

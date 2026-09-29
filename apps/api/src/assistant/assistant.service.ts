@@ -12,6 +12,7 @@ import { AuditService } from '../audit/audit.service';
 import { assertSameBuilding } from '../common/tenant';
 import { PrismaService } from '../prisma/prisma.service';
 import { LLM_PROVIDER, LlmProvider } from './llm-provider';
+import { RagGraphService } from './rag-graph.service';
 
 interface SourceChunk {
   type: 'announcement' | 'faq' | 'static';
@@ -24,12 +25,20 @@ export interface AssistantAnswer {
   sources: { type: string; title: string }[];
 }
 
+/** RAG_ENGINE=langgraph routes the copilot through the LangGraph RAG graph. */
+function ragEngine(): 'langgraph' | 'keyword' {
+  return (process.env.RAG_ENGINE ?? 'keyword').toLowerCase().trim() === 'langgraph'
+    ? 'langgraph'
+    : 'keyword';
+}
+
 @Injectable()
 export class AssistantService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
+    private readonly ragGraph: RagGraphService,
   ) {}
 
   /**
@@ -43,6 +52,31 @@ export class AssistantService {
     user: AuthenticatedUser,
   ): Promise<AssistantAnswer> {
     assertSameBuilding(user, buildingId);
+
+    // Phase 2: opt-in LangGraph path (RAG_ENGINE=langgraph). The graph service
+    // handles its own degradation; if it ever throws we fall through to the
+    // original keyword pipeline below so the endpoint never 500s.
+    if (ragEngine() === 'langgraph') {
+      try {
+        const ragResult = await this.ragGraph.query(buildingId, question, user);
+        this.audit.record({
+          buildingId,
+          actorId: user.id,
+          actorRole: user.role,
+          action: 'assistant.query',
+          entity: 'building',
+          entityId: buildingId,
+          metadata: {
+            questionLength: question.length,
+            sources: ragResult.sources.length,
+            engine: 'langgraph',
+          },
+        });
+        return ragResult;
+      } catch {
+        // fall through to keyword pipeline
+      }
+    }
 
     const redactedQuestion = this.redactPii(question);
     const chunks = await this.retrieve(buildingId, redactedQuestion);

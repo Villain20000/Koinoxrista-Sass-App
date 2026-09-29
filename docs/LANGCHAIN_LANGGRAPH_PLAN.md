@@ -140,15 +140,17 @@ LANGFUSE_BASE_URL=""
    degradation (`PGVECTOR_ENABLED=false`, Ollama down, extension missing) covered;
    full `api:test` suite green (1154 tests). Tenant-isolation e2e pending Phase 2.
 
-### Phase 2 — LangGraph RAG graph behind a flag (week 2–4)
-1. `apps/api/src/assistant/graphs/rag.graph.ts` — nodes/edges as in §2; every LLM leaf
-   call goes through the injected `LlmProvider` (so console mock still works in tests).
-2. `AssistantService.query()` branches on `RAG_ENGINE`: `langgraph` → invoke graph;
-   `keyword` → existing code path untouched.
-3. Keep the tenant guarantee: `assertSameBuilding` before graph entry; vector filter
-   `buildingId` asserted by a dedicated spec (`otherBuilding → 0 chunks`).
-4. Acceptance: golden-set harness (§8 of `AI_LOCAL_FEATURES_GR.md`) — with Ollama up,
-   ≥80% of the 50 Greek Q&A answered with a citation; `keyword` mode unchanged and green.
+### Phase 2 — LangGraph RAG graph behind a flag (week 2–4) — ✅ CODE COMPLETE (2026-09-29)
+1. **Done**: `apps/api/src/assistant/rag-graph.service.ts` — StateGraph
+   `load_context → retrieve → grade_docs → (generate | rewrite_query → retrieve |
+   honest_no_context) → guard_answer → END`; similarity ≥0.75 skips the LLM grading
+   call; rewrite uses a Greek synonym-expansion table (no extra LLM call).
+2. **Done**: `AssistantService.query()` branches on `RAG_ENGINE` (default `keyword`);
+   graph errors fall through to the original pipeline; audited with `engine` metadata.
+3. **Done**: tenant guarantee — `assertSameBuilding` before graph entry, `buildingId`
+   filter inside the vector query, cross-building rejection spec.
+4. Pending: golden-set harness run against a live Ollama (§8 of `AI_LOCAL_FEATURES_GR.md`)
+   before flipping the default; `keyword` mode unchanged and green.
 
 ### Phase 3 — Agent graphs for existing features (week 4–8)
 | Graph | Replaces | Notes |
@@ -220,5 +222,6 @@ LANGFUSE_BASE_URL=""
 
 1. ~~Add env vars~~ Done — `EMBEDDING_API_URL` in `.env.example`.
 2. ~~Phase 1 migration + `EmbeddingsService` + ingest hooks~~ **Done** (see Phase 1 above).
-3. Phase 2 RAG graph + `RAG_ENGINE` flag + tenant-isolation spec.
-4. Run golden set on staging (`meltemi:7b` + `bge-m3`) and record baseline numbers here.
+3. ~~Phase 2 RAG graph + `RAG_ENGINE` flag + tenant-isolation spec~~ **Done** (see Phase 2 above).
+4. Run golden set on staging (`meltemi:7b` + `bge-m3`) and record baseline numbers here;
+   then flip `RAG_ENGINE` default to `langgraph` if citation-rate ≥80%.
