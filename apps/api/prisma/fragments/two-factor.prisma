@@ -1,0 +1,39 @@
+// TOTP two-factor authentication (wave: 2FA sign-in).
+//
+// INTEGRATOR: merge this fragment into apps/api/prisma/schema.prisma, then run
+// `prisma generate` + a migration. The API code in src/two-factor/ and
+// src/auth/ compiles against these fields once the client is regenerated.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER-COLUMN ADDITIONS (integrator merges into model User)
+//
+//   twoFactorSecret   String?    // base32-encoded TOTP secret (RFC 6238)
+//   twoFactorEnabled  Boolean @default(false)
+//
+// Suggested placement inside `model User`:
+//
+//   phone          String?
+//   role           Role
+//   buildingId     String?
+// + twoFactorSecret  String?
+// + twoFactorEnabled Boolean @default(false)
+//   createdAt      DateTime @default(now())
+//
+// And add to the User relation list:
+//
+// + recoveryCodes    TwoFactorRecoveryCode[]
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Single-use 2FA recovery codes (10 per user). Only sha256 hashes are stored;
+/// plaintext codes are shown exactly once when 2FA is enabled.
+model TwoFactorRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

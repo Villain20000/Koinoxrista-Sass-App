@@ -1,0 +1,32 @@
+// Συστάσεις / referral program (Phase: referrals).
+//
+// Each building can earn month-credits against the platform fee:
+//  - REFERRED: granted to a NEW building that signed up via ?ref=CODE
+//    (3 single-month rows), consumed by the self-billing recurring run.
+//  - REFERRER: granted to the owner of the used code (1 row).
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs on the existing model:
+//   Building { referralCode    String?          @unique
+//              referralCredits ReferralCredit[] }
+// `sourceBuildingId` is intentionally a plain scalar (no FK) so only one
+// inverse relation has to be wired on Building.
+
+model ReferralCredit {
+  id               String    @id @default(uuid())
+  buildingId       String
+  /// Building whose referral code produced this credit (null when unknown).
+  sourceBuildingId String?
+  /// The referral code that produced this credit (`BLD-XXXXXX`).
+  code             String
+  months           Int       @default(1)
+  /// REFERRED (new-building reward) | REFERRER (code-owner reward)
+  reason           String
+  usedAt           DateTime?
+  /// Platform-invoice period (`YYYY-MM`) that consumed this credit.
+  usedPeriod       String?
+  createdAt        DateTime  @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@index([buildingId, usedAt])
+}

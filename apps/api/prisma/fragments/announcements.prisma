@@ -1,0 +1,41 @@
+// Building announcements / newsfeed (Phase: announcements).
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs the inverse relation
+// fields on the existing models:
+//   Building { announcements        Announcement[] }
+//   User     { announcements        Announcement[]
+//              announcementComments AnnouncementComment[] }
+
+model Announcement {
+  id         String   @id @default(uuid())
+  buildingId String
+  authorId   String
+  title      String
+  body       String
+  pinned     Boolean  @default(false)
+  /// ALL (everyone in the building) | RESIDENTS (only Role.RESIDENT users)
+  audience   String   @default("ALL")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  building Building             @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  author   User                 @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments AnnouncementComment[]
+
+  @@index([buildingId, pinned, createdAt])
+  @@index([authorId])
+}
+
+model AnnouncementComment {
+  id             String   @id @default(uuid())
+  announcementId String
+  authorId       String
+  body           String
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([announcementId, createdAt])
+  @@index([authorId])
+}

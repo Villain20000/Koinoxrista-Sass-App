@@ -1,0 +1,28 @@
+// Session/device management (wave: active sessions + revocation).
+//
+// INTEGRATOR: merge this fragment into apps/api/prisma/schema.prisma, then run
+// `prisma generate` + a migration. src/sessions/ and src/auth/ compile against
+// these models once the client is regenerated.
+//
+// Add to the User relation list:
+//
+//   refreshSessions    RefreshSession[]
+
+/// One row per issued refresh token. Only sha256 hashes of the full JWT are
+/// stored; rotation re-points the row onto the replacement token so the
+/// "active sessions" list mirrors real devices, not every rotation.
+model RefreshSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String
+  userAgent  String?
+  ip         String?
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}

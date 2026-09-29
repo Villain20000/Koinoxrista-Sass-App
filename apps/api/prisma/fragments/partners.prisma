@@ -1,0 +1,34 @@
+// Partner referrals & revenue-share tracker (Phase: partners).
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs the inverse relation
+// fields on the existing models:
+//   Building { partnerLeads PartnerLead[] }
+//   User     { partnerLeadsCreated PartnerLead[] }
+
+// ----- PartnerLead -----
+model PartnerLead {
+  id        String  @id @default(uuid())
+  buildingId String
+  /// Company the lead was referred to (e.g. insurance broker, elevator firm).
+  partnerName String
+  /// INSURANCE | ELEVATOR | ENERGY | OTHER
+  category  String
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  /// Agreed referral commission in cents.
+  expectedCommissionCents Int
+  /// Realized commission in cents; required when status becomes WON.
+  actualCommissionCents Int?
+  /// NEW | CONTACTED | QUOTED | WON | LOST (forward-only pipeline)
+  status    String  @default("NEW")
+  notes     String?
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([buildingId, status])
+}

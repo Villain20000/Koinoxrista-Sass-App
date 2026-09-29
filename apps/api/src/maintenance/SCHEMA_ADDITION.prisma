@@ -1,0 +1,41 @@
+// SCHEMA ADDITION for Feature 4 — copy into apps/api/prisma/schema.prisma
+// Building additions:
+model Building {
+  // ... existing fields
+  buildingAssets       BuildingAsset[]
+  maintenanceSchedules MaintenanceSchedule[]
+}
+
+model BuildingAsset {
+  id          String   @id @default(uuid())
+  buildingId  String
+  name        String
+  category    String // ELEVATOR | BOILER | FIRE_EXT | PUMP | ROOF | OTHER
+  location    String?
+  installedAt DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  building    Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  schedules   MaintenanceSchedule[]
+
+  @@index([buildingId, category])
+}
+
+model MaintenanceSchedule {
+  id                String   @id @default(uuid())
+  assetId           String
+  buildingId        String
+  title             String
+  intervalMonths    Int
+  lastDoneAt        DateTime?
+  nextDueAt         DateTime
+  autoCreateJob     Boolean  @default(true)
+  expenseCategoryId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  asset             BuildingAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  building          Building      @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, nextDueAt])
+  @@index([assetId])
+}

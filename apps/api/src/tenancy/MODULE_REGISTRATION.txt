@@ -1,0 +1,46 @@
+// MODULE_REGISTRATION.txt — Tenancy / Owner vs Tenant + Voting Rights Matrix
+// =============================================================================
+// Do NOT edit schema.prisma or app.module.ts directly per task instructions.
+// Merge these imports manually (or via the main agent).
+// =============================================================================
+
+1) In apps/api/src/app/app.module.ts:
+   ------------------------------------------------------------
+   import { TenancyModule } from '../tenancy/tenancy.module';
+   ------------------------------------------------------------
+   Add to the `imports: [ ... ]` array (keep alphabetical-ish near UnitsModule / VotesModule):
+   ------------------------------------------------------------
+     BuildingsModule,
+     UnitsModule,
+     OwnershipsModule,
+     TenancyModule,   // <-- add this
+     ExpenseCategoriesModule,
+   ------------------------------------------------------------
+   Or alternatively near VotesModule:
+   ------------------------------------------------------------
+     VotesModule,
+     TenancyModule,   // <-- add this
+     JobsModule,
+   ------------------------------------------------------------
+
+2) No additional providers, guards, or global pipes required.
+   - TenancyModule already imports AuditModule.
+   - JwtAuthGuard + RolesGuard are applied per-controller (ADMIN only).
+   - ValidationPipe is applied per-controller with { whitelist: true, transform: true }.
+   - Global ThrottlerGuard is registered in AuthModule (app-wide) — tenancy routes
+     automatically inherit throttling; no extra ThrottlerModule import needed.
+
+3) After merging the Prisma fragment (SCHEMA_ADDITION.prisma):
+     pnpm prisma generate
+     pnpm prisma migrate dev --name tenancy
+   (the migration adds columns to Ownership and creates VotingEligibilityRule)
+
+4) Optional integration in VotesService:
+   Inject TenancyService and replace computeTally with computeEligibleTally when
+   tenancy matrix is active, e.g.:
+     const tally = await this.tenancy.computeEligibleTally(vote.buildingId, vote.id, user);
+   No schema change is required for VotesModule — TenancyService is exported.
+
+5) Verify module loads:
+     pnpm nx run api:build
+     pnpm nx run api:test --testFile="tenancy.service.spec.ts"

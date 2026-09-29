@@ -1,0 +1,33 @@
+ROUTES REGISTRATION — SupplierInvoicesModule provides 1 controller:
+
+SupplierInvoicesController  prefix: buildings/:buildingId/supplier-invoices
+  GET    /buildings/:buildingId/supplier-invoices                          -> list            (ADMIN) query: status=DRAFT|IMPORTED|MATCHED|VOIDED, from=ISO8601, to=ISO8601, skip, take, page, limit
+  GET    /buildings/:buildingId/supplier-invoices/stats                     -> getStats        (ADMIN)
+  GET    /buildings/:buildingId/supplier-invoices/:id                       -> getById         (ADMIN)
+  POST   /buildings/:buildingId/supplier-invoices/manual                    -> importManual    (ADMIN) body: CreateManualSupplierInvoiceDto
+  POST   /buildings/:buildingId/supplier-invoices/import-json               -> importFromJson  (ADMIN) body: raw myDATA JSON or { json: {...} }
+  POST   /buildings/:buildingId/supplier-invoices/import-pdf                -> importFromPdf   (ADMIN) multipart file field: "file" (PDF, max 10MB)
+  POST   /buildings/:buildingId/supplier-invoices/pull-mydata               -> pullFromMyData  (ADMIN)
+  POST   /buildings/:buildingId/supplier-invoices/:id/match                 -> matchToExpense  (ADMIN) body: { expenseId?: string } — if expenseId null/omitted, auto-creates Expense via largest-remainder split
+  POST   /buildings/:buildingId/supplier-invoices/:id/void                  -> voidInvoice     (ADMIN)
+
+All routes are tenant-scoped via assertSameBuilding(user, buildingId) and guarded by JwtAuthGuard + RolesGuard (ADMIN only).
+ValidationPipe with whitelist:true (except import-json which uses whitelist:false to preserve myDATA fields) at controller level.
+AuditService records every mutation:
+  supplier_invoice.manual_created, supplier_invoice.imported_json, supplier_invoice.imported_pdf,
+  supplier_invoice.pull_mydata, supplier_invoice.matched, supplier_invoice.voided (+ expense.created on auto-match).
+Pagination: list returns { items, total, skip, take }; defaults take=25, max 100; supports skip/take or page/limit.
+Tenant isolation: buildingId must match user.buildingId, otherwise 403 Forbidden.
+Status filter validated against DRAFT|IMPORTED|MATCHED|VOIDED.
+
+Frontend route (add to apps/web/src/app/app.routes.ts under admin children):
+  {
+    path: 'supplier-invoices',
+    loadComponent: () => import('./pages/admin/admin-supplier-invoices.component').then(m => m.AdminSupplierInvoicesPage),
+  }
+And nav link in apps/web/src/app/layout/layout.component.ts:
+  { path: '/admin/supplier-invoices', label: 'Τιμολόγια προμηθευτών' } under ADMIN NavGroup 'Διαχείριση'
+
+Shared types: libs/shared/src/lib/supplier-invoices.ts
+Web API client: apps/web/src/app/core/api/supplier-invoices-api.service.ts
+Prisma: apply SCHEMA_ADDITION.prisma then `npx prisma generate` + migration.

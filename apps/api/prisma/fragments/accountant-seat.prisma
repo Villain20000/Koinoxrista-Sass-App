@@ -1,0 +1,28 @@
+// Accountant seat (λογιστής) — Phase: accountant-seat
+// ENUM ADDITION: enum Role += ACCOUNTANT (integrator)
+//
+// The `Role` enum lives in apps/api/prisma/schema.prisma; add the value there:
+//   enum Role {
+//     ADMIN
+//     RESIDENT
+//     PROVIDER
+//     ACCOUNTANT
+//   }
+// The matching SQL lives in accountant-seat.sql (ADD VALUE cannot run inside a
+// transaction block). Integrator must also append the two back-relations below
+// on User ("accountantAccesses", "accountantAccessesGranted") and one on
+// Building ("accountantAccesses").
+
+model AccountantAccess {
+  id           String   @id @default(uuid())
+  accountantId String
+  buildingId   String
+  grantedById  String
+  createdAt    DateTime @default(now())
+
+  accountant User     @relation("AccountantAccesses", fields: [accountantId], references: [id], onDelete: Cascade)
+  building   Building @relation("AccountantAccesses", fields: [buildingId], references: [id], onDelete: Cascade)
+  grantedBy  User     @relation("AccountantAccessesGranted", fields: [grantedById], references: [id], onDelete: Cascade)
+
+  @@unique([accountantId, buildingId])
+}

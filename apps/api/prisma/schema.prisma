@@ -1,0 +1,1603 @@
+// PolykatoikiaOS — multi-tenant data layer.
+// Every domain model carries a buildingId FK (tenant boundary = building).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  RESIDENT
+  PROVIDER
+  ACCOUNTANT
+  /// Feature 6: platform operators manage subscriptions/platform billing only.
+  PLATFORM_ADMIN
+  /// Feature 6: 理事長 — full building admin (superset of ADMIN).
+  BUILDING_OWNER
+}
+
+enum AllocationStrategy {
+  MILIMES
+  UNITS
+  CUSTOM
+  /// Θέρμανση ανά καλοριφέρ (heating split by radiator count).
+  RADIATORS
+  /// Ανελκυστήρας ανά όροφο (elevator cost per floor above ground).
+  ELEVATOR_FLOORS
+  /// Κατανομή με βάση ενδείξεις μετρητών (allocation by meter consumption).
+  METERS
+  /// Κατανομή ανά τετραγωνικά μέτρα (allocation by unit area, EU/NA common).
+  SQUARE_METERS
+  /// Κατανομή ανά μερίδιο ιδιοκτησίας (allocation by ownership share, NA HOA).
+  SHARE_FRACTION
+  /// Κατανομή ίσα ανά διαμέρισμα (per-unit equal weights, HEADCOUNT).
+  HEADCOUNT
+}
+
+enum SubscriptionTier {
+  BASIC
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum MyDataStatus {
+  PENDING
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+}
+
+enum GdprRequestType {
+  EXPORT
+  DELETE
+}
+
+enum GdprRequestStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+enum PaymentMethod {
+  CARD
+  IRIS
+  /// International rails (P0-2): instant payments & regional debits.
+  PIX
+  ACH
+  SPEI
+  SEPA_DD
+  INTERAC
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Building {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  city      String   @default("Thessaloniki")
+  createdAt DateTime @default(now())
+
+  // Feature 2 (PSP selection) + Feature 3 (open join) + Feature 19 (JP e-invoice)
+  pspProvider           String?  @default("viva")
+  /// International market profile (synthetic region code, default "GR").
+  market                String   @default("GR")
+  /// ISO-4217 currency for the building (default "EUR" for Greece).
+  currency              String   @default("EUR")
+  joinCode              String   @default("")
+  invoiceRegistrationNo String?
+
+  units                  Unit[]
+  users                  User[]
+  categories             ExpenseCategory[]
+  expenses               Expense[]
+  invoices               Invoice[]
+  votes                  Vote[]
+  jobs                   Job[]
+  documents              Document[]
+  subscription           Subscription?
+  memberships            Membership[]
+  apiKeys                ApiKey[]
+  myData                 MyDataInvoice[]
+  recurringExpenses      RecurringExpense[]
+  invites                Invite[]
+  complianceItems        ComplianceItem[]
+  budgetLines            BudgetLine[]
+  supplierPayments       SupplierPayment[]
+  lateFeeSetting         LateFeeSetting?
+  lateFeeCharges         LateFeeCharge[]
+  accountantAccesses     AccountantAccess[]
+  platformInvoices       PlatformInvoice[]
+  agendaItems            AgendaItem[]
+  attendances            Attendance[]
+  bankConnections        BankConnection[]
+  meters                 Meter[]
+  announcements          Announcement[]
+  paymentPlans           PaymentPlan[]
+  branding               BuildingBranding?
+  jobCommissions         JobCommission[]
+  featuredSlots          FeaturedSlot[]
+  referralCode           String?                 @unique
+  referralCredits        ReferralCredit[]
+  partnerLeads           PartnerLead[]
+  treasuryAccounts       TreasuryAccount[]
+  treasuryEntries        TreasuryEntry[]
+  reserveFund            ReserveFund?            @relation
+  reserveContributions   ReserveContribution[]
+  reserveDrawdowns       ReserveDrawdown[]
+  extraordinaryLevies    ExtraordinaryLevy[]
+  votingEligibilityRules VotingEligibilityRule[]
+  supplierInvoices       SupplierInvoice[]
+  buildingAssets         BuildingAsset[]
+  maintenanceSchedules   MaintenanceSchedule[]
+  legalCases             LegalCase[]
+  legalEvents            LegalEvent[]
+
+  // Feature 1: scheduled job run ledger
+  jobRuns            JobRun[]
+  // Feature 3: email verification rows
+  emailVerifications EmailVerification[]
+  // Feature 9: mass-email campaigns
+  campaigns          Campaign[]
+  // Feature 10: points ledger
+  pointTransactions  PointTransaction[]
+  // Feature 13: shop inventory
+  products           Product[]
+  productOrders      ProductOrder[]
+  // Feature 14: per-admin permission grants
+  adminPermissions   AdminPermission[]
+  // Feature 15: inspection records
+  inspectionRecords  InspectionRecord[]
+  // Feature 18: outbound webhook endpoints + deliveries
+  webhookEndpoints   WebhookEndpoint[]
+  // Feature 20: KPI snapshots + alert rules
+  weeklySnapshots    BuildingWeeklySnapshot[]
+  alertRules         AlertRule[]
+}
+
+model Unit {
+  id            String @id @default(cuid())
+  buildingId    String
+  label         String
+  floor         Int?
+  millimes      Int
+  radiatorCount Int    @default(0)
+  /// P0-3: usable area in m² (SQUARE_METERS strategy, EU/NA).
+  squareMeters  Float?
+  /// P0-3: ownership share as integer ‰ of 1000 (SHARE_FRACTION, NA HOA).
+  shareFraction Int?
+
+  building       Building        @relation(fields: [buildingId], references: [id])
+  ownerships     Ownership[]
+  shares         Share[]
+  invoices       Invoice[]
+  ballots        Ballot[]
+  invites        Invite[]
+  lateFeeCharges LateFeeCharge[]
+  attendances    Attendance[]
+  meters         Meter[]
+  paymentPlans    PaymentPlan[]
+  levyShares      LevyShare[]
+  legalCases      LegalCase[]
+  productOrders   ProductOrder[]
+
+  @@unique([buildingId, label])
+  @@index([buildingId])
+}
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String
+  firstName        String
+  lastName         String
+  phone            String?
+  role             Role
+  buildingId       String?
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean  @default(false)
+  /// Feature 3: ACTIVE (default) | PENDING_VERIFICATION | PENDING_APPROVAL | DISABLED
+  status           String   @default("ACTIVE")
+  /// Feature 11: UI language preference (el | en | zh | pt | ja)
+  locale           String   @default("el")
+  /// Feature 10: points/rewards materialized balance.
+  pointBalance     Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  building              Building?               @relation(fields: [buildingId], references: [id])
+  recoveryCodes         TwoFactorRecoveryCode[]
+  accountantAccesses    AccountantAccess[]      @relation("AccountantAccesses")
+  accountantGrantsGiven AccountantAccess[]      @relation("AccountantAccessesGranted")
+  announcements         Announcement[]
+  announcementComments  AnnouncementComment[]
+  jobCommissions        JobCommission[]         @relation("JobCommissionProvider")
+  featuredSlots         FeaturedSlot[]
+  refreshSessions       RefreshSession[]
+  partnerLeadsCreated   PartnerLead[]
+  profile               ProviderProfile?
+  expenses              Expense[]               @relation("CreatedByUser")
+  documents             Document[]
+  bids                  Bid[]
+  workLogs              WorkLog[]
+  ownerships            Ownership[]
+  memberships           Membership[]
+  gdprRequests          GdprRequest[]
+  apiKeys               ApiKey[]
+  reportedJobs          Job[]                   @relation("ReportedJobs")
+  pushSubscriptions     PushSubscription[]
+  notifications         Notification[]
+  invitesSent           Invite[]                @relation("InvitesSent")
+
+  emailVerifications EmailVerification[]
+  campaignsCreated   Campaign[]              @relation("CampaignCreatedBy")
+  pointTransactions  PointTransaction[]
+  adminPermissions   AdminPermission[]       @relation("AdminPermissionGrantedBy")
+  inspections        InspectionRecord[]
+
+  @@index([buildingId])
+}
+
+/// Multi-building tenancy (Phase 4): an ADMIN may manage several buildings.
+/// User.buildingId remains the *active* building pointer; Membership rows are
+/// the authoritative list of (user, building, role) grants.
+model Membership {
+  id         String   @id @default(cuid())
+  userId     String
+  buildingId String
+  role       Role
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@unique([userId, buildingId])
+  @@index([buildingId])
+}
+
+/// Public REST API credentials (Phase 4). Raw key shown once at creation;
+/// only the SHA-256 hash is stored. Prefix enables lookup without the secret.
+model ApiKey {
+  id         String    @id @default(cuid())
+  buildingId String
+  userId     String
+  name       String
+  prefix     String
+  keyHash    String    @unique
+  scopes     String[]
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([buildingId])
+}
+
+model ProviderProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  trade           String
+  certs           String[]
+  rating          Float?
+  city            String?
+  bio             String?
+  hourlyRateCents Int?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([city])
+}
+
+model Ownership {
+  id             String    @id @default(cuid())
+  unitId         String
+  userId         String
+  shareMillimes  Int
+  periodStart    DateTime?
+  occupantType   String    @default("OWNER")
+  votingEligible Boolean   @default(true)
+  residentRole   String?
+
+  unit Unit @relation(fields: [unitId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([unitId])
+  @@index([userId])
+}
+
+model ExpenseCategory {
+  id         String             @id @default(cuid())
+  buildingId String
+  name       String
+  strategy   AllocationStrategy @default(MILIMES)
+  /// Feature 19: tax rate in basis points for JP インボイス (1000 = 10%).
+  taxRateBps Int                @default(1000)
+
+  building          Building           @relation(fields: [buildingId], references: [id])
+  expenses          Expense[]
+  recurringExpenses RecurringExpense[]
+  budgetLines       BudgetLine[]
+
+  @@index([buildingId])
+}
+
+model Expense {
+  id              String   @id @default(cuid())
+  buildingId      String
+  categoryId      String
+  description     String
+  totalCents      Int
+  periodYearMonth String
+  createdById     String
+  createdAt       DateTime @default(now())
+
+  building         Building          @relation(fields: [buildingId], references: [id])
+  category         ExpenseCategory   @relation(fields: [categoryId], references: [id])
+  createdBy        User              @relation("CreatedByUser", fields: [createdById], references: [id])
+  shares           Share[]
+  supplierPayments SupplierPayment[]
+  supplierInvoice  SupplierInvoice?
+
+  @@index([buildingId])
+  @@index([categoryId])
+  @@index([createdById])
+}
+
+model Share {
+  id          String @id @default(cuid())
+  expenseId   String
+  unitId      String
+  amountCents Int
+
+  expense Expense @relation(fields: [expenseId], references: [id])
+  unit    Unit    @relation(fields: [unitId], references: [id])
+
+  @@unique([expenseId, unitId])
+  @@index([expenseId])
+  @@index([unitId])
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  buildingId      String
+  unitId          String
+  periodYearMonth String
+  totalCents      Int
+  paidCents       Int           @default(0)
+  status          PaymentStatus @default(PENDING)
+
+  building       Building        @relation(fields: [buildingId], references: [id])
+  unit           Unit            @relation(fields: [unitId], references: [id])
+  payments       Payment[]
+  orders         PaymentOrder[]
+  myData         MyDataInvoice?
+  lateFeeCharges LateFeeCharge[]
+  productOrders  ProductOrder[]
+
+  @@unique([unitId, periodYearMonth])
+  @@index([buildingId])
+  @@index([unitId])
+}
+
+/// myDATA (ΑΑΔΕ) e-invoicing record (Phase 4). One per paid invoice; the MARK
+/// (Μοναδικός Αριθμός Καταχώρησης) is AADE's unique registration number.
+model MyDataInvoice {
+  id                     String       @id @default(cuid())
+  invoiceId              String       @unique
+  buildingId             String
+  mark                   String       @unique
+  series                 String
+  seqNo                  Int
+  issueDate              DateTime
+  paymentMethodCode      String
+  classificationCategory String
+  classificationType     String
+  netAmountCents         Int
+  vatAmountCents         Int
+  status                 MyDataStatus @default(PENDING)
+  responseRaw            String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id])
+  building Building @relation(fields: [buildingId], references: [id])
+
+  @@index([buildingId])
+}
+
+/// PSP checkout session (Viva Smart Checkout order) for an invoice.
+model PaymentOrder {
+  id          String            @id @default(cuid())
+  invoiceId   String
+  orderCode   String            @unique
+  amountCents Int
+  status      PaymentOrderState @default(PENDING)
+  checkoutUrl String
+  createdAt   DateTime          @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+enum PaymentOrderState {
+  PENDING
+  COMPLETED
+  FAILED
+  EXPIRED
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  invoiceId   String
+  method      PaymentMethod
+  pspRef      String?
+  amountCents Int
+  status      PaymentStatus
+  createdAt   DateTime      @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model Vote {
+  id            String   @id @default(cuid())
+  buildingId    String
+  topic         String
+  description   String?
+  thresholdType String
+  opensAt       DateTime
+  closesAt      DateTime
+  result        String?
+
+  building    Building     @relation(fields: [buildingId], references: [id])
+  ballots     Ballot[]
+  agendaItems AgendaItem[]
+  attendances Attendance[]
+
+  @@index([buildingId])
+}
+
+model Ballot {
+  id     String @id @default(cuid())
+  voteId String
+  unitId String
+  choice String
+
+  vote Vote @relation(fields: [voteId], references: [id])
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@unique([voteId, unitId])
+  @@index([voteId])
+  @@index([unitId])
+}
+
+model Job {
+  id           String  @id @default(cuid())
+  buildingId   String
+  title        String
+  description  String
+  status       String  @default("OPEN")
+  budgetCents  Int?
+  /// ADMIN_RFP (default) or RESIDENT_REPORT awaiting admin conversion.
+  source       String  @default("ADMIN_RFP")
+  reportedById String?
+
+  building         Building          @relation(fields: [buildingId], references: [id])
+  reportedBy       User?             @relation("ReportedJobs", fields: [reportedById], references: [id])
+  bids             Bid[]
+  workLogs         WorkLog[]
+  supplierPayments SupplierPayment[]
+  commission       JobCommission?
+  inspections      InspectionRecord[]
+
+  @@index([buildingId])
+  @@index([reportedById])
+}
+
+model Bid {
+  id             String  @id @default(cuid())
+  jobId          String
+  providerUserId String
+  amountCents    Int
+  message        String?
+  status         String  @default("SUBMITTED")
+  ratingStars    Int?
+
+  job      Job  @relation(fields: [jobId], references: [id])
+  provider User @relation(fields: [providerUserId], references: [id])
+
+  @@index([jobId])
+  @@index([providerUserId])
+}
+
+model WorkLog {
+  id             String   @id @default(cuid())
+  jobId          String
+  providerUserId String
+  note           String
+  loggedAt       DateTime @default(now())
+
+  job      Job  @relation(fields: [jobId], references: [id])
+  provider User @relation(fields: [providerUserId], references: [id])
+
+  @@index([jobId])
+  @@index([providerUserId])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  buildingId   String
+  type         String
+  fileKey      String
+  fileName     String
+  sizeBytes    Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  building   Building @relation(fields: [buildingId], references: [id])
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([buildingId])
+  @@index([uploadedById])
+}
+
+/// Per-building SaaS subscription (Phase 5, PLAN.md §6 pricing).
+model Subscription {
+  id                 String             @id @default(cuid())
+  buildingId         String             @unique
+  tier               SubscriptionTier   @default(BASIC)
+  status             SubscriptionStatus @default(TRIALING)
+  billingCycle       BillingCycle       @default(MONTHLY)
+  units              Int
+  pricePerUnitCents  Int
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAt           DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  building         Building          @relation(fields: [buildingId], references: [id])
+  platformInvoices PlatformInvoice[]
+
+  @@index([buildingId])
+}
+
+/// GDPR data-subject requests (Phase 5): full export or erasure. Erasure
+/// anonymizes the user while preserving financial/voting records (legal hold).
+model GdprRequest {
+  id          String            @id @default(cuid())
+  userId      String
+  buildingId  String?
+  type        GdprRequestType
+  status      GdprRequestStatus @default(PENDING)
+  resultKey   String?
+  createdAt   DateTime          @default(now())
+  completedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+/// Append-only audit trail for financial & voting mutations (PLAN.md §5).
+/// Never updated or deleted from application code.
+model AuditLog {
+  id         String   @id @default(cuid())
+  buildingId String?
+  actorId    String?
+  actorRole  Role?
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([buildingId, createdAt])
+  @@index([actorId])
+}
+
+/// Web Push endpoint registration (Phase 7). One browser/subscription row per
+/// device; endpoint is the stable identifier returned by pushManager.subscribe.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+/// In-app notification inbox entry (Phase 7); readAt null = unread.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?
+  linkPath  String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+}
+
+/// Recurring expense template (Phase 9). Materialized into an Expense + Share
+/// rows per period via POST /buildings/:buildingId/recurring/generate;
+/// lastPeriod makes each run idempotent.
+model RecurringExpense {
+  id          String             @id @default(cuid())
+  buildingId  String
+  name        String
+  categoryId  String?
+  amountCents Int
+  strategy    AllocationStrategy @default(MILIMES)
+  active      Boolean            @default(true)
+  /// Last `YYYY-MM` period this template was billed for; null = never.
+  lastPeriod  String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  building Building         @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  category ExpenseCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([buildingId, active])
+}
+
+/// Phase 14: token-based invitation to join a building (or sign up as
+/// provider). Only the SHA-256 hash of the token is stored; the raw token is
+/// shown once to the inviting admin.
+model Invite {
+  id          String    @id @default(cuid())
+  email       String
+  role        Role
+  buildingId  String?
+  unitId      String?
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String
+  createdAt   DateTime  @default(now())
+
+  invitedBy User      @relation("InvitesSent", fields: [invitedById], references: [id])
+  building  Building? @relation(fields: [buildingId], references: [id])
+  unit      Unit?     @relation(fields: [unitId], references: [id])
+
+  @@index([email])
+  @@index([buildingId])
+}
+
+enum ComplianceKind {
+  INSURANCE
+  ELEVATOR_CERTIFICATE
+  FIRE_SAFETY
+  OTHER
+}
+
+/// Phase 15: building insurance policies & mandatory certificates with expiry
+/// tracking (νόμος 4756/2020 requires building insurance).
+model ComplianceItem {
+  id           String         @id @default(cuid())
+  buildingId   String
+  kind         ComplianceKind
+  title        String
+  providerName String?
+  policyNumber String?
+  premiumCents Int?
+  startsOn     DateTime
+  endsOn       DateTime
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, endsOn])
+}
+
+/// Phase 16: planned annual amount per budget line; compared against actual
+/// expenses via the budgets compare endpoint.
+model BudgetLine {
+  id           String   @id @default(cuid())
+  buildingId   String
+  year         Int
+  categoryId   String?
+  name         String
+  plannedCents Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  building Building         @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  category ExpenseCategory? @relation(fields: [categoryId], references: [id])
+
+  @@unique([buildingId, year, name])
+  @@index([buildingId, year])
+}
+
+enum SupplierPaymentMethod {
+  BANK
+  CASH
+  CHECK
+  CARD
+}
+
+/// Phase 18: money paid OUT to suppliers/technicians, optionally linked to an
+/// expense or a job (provider invoice settlement).
+model SupplierPayment {
+  id          String                @id @default(cuid())
+  buildingId  String
+  expenseId   String?
+  jobId       String?
+  amountCents Int
+  method      SupplierPaymentMethod @default(BANK)
+  paidAt      DateTime
+  reference   String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime              @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  expense  Expense? @relation(fields: [expenseId], references: [id])
+  job      Job?     @relation(fields: [jobId], references: [id])
+
+  @@index([buildingId, paidAt])
+  @@index([expenseId])
+  @@index([jobId])
+}
+
+/// Ρόπα late-payment surcharges: per-building policy.
+model LateFeeSetting {
+  id             String   @id @default(uuid())
+  buildingId     String   @unique
+  graceDays      Int      @default(5)
+  /// FLAT (dailyFlatCents per late day) | PERCENT (dailyBps of outstanding per late day)
+  mode           String   @default("FLAT")
+  dailyFlatCents Int      @default(0)
+  dailyBps       Int      @default(0)
+  capCents       Int?
+  updatedAt      DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId])
+}
+
+/// One ρόπα charge per unit + invoice month; idempotent runs.
+model LateFeeCharge {
+  id          String    @id @default(uuid())
+  buildingId  String
+  unitId      String
+  invoiceId   String
+  month       String
+  daysLate    Int
+  amountCents Int
+  waivedAt    DateTime?
+  createdAt   DateTime  @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unit     Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  invoice  Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([unitId, month])
+  @@index([buildingId])
+}
+
+/// Accountant seat: read-only financial access grants per building.
+model AccountantAccess {
+  id           String   @id @default(uuid())
+  accountantId String
+  buildingId   String
+  grantedById  String
+  createdAt    DateTime @default(now())
+
+  accountant User     @relation("AccountantAccesses", fields: [accountantId], references: [id], onDelete: Cascade)
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  grantedBy  User     @relation("AccountantAccessesGranted", fields: [grantedById], references: [id], onDelete: Cascade)
+
+  @@unique([accountantId, buildingId])
+}
+
+/// Platform self-billing: myDATA-style document for the SaaS's own fee.
+model PlatformInvoice {
+  id             String    @id @default(uuid())
+  buildingId     String
+  subscriptionId String?
+  number         String    @unique
+  /// `YYYY-MM` recurring fee or `YYYY-MM-ADJ-<n>` tier-change delta.
+  period         String
+  tier           String
+  units          Int
+  amountCents    Int
+  status         String    @default("ISSUED")
+  issuedAt       DateTime  @default(now())
+  paidAt         DateTime?
+
+  building     Building      @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([subscriptionId, period])
+  @@index([buildingId])
+}
+
+/// Single-use 2FA recovery codes; only sha256 hashes stored.
+model TwoFactorRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Digital assembly: ordered discussion items for a vote.
+model AgendaItem {
+  id         String   @id @default(uuid())
+  voteId     String
+  buildingId String
+  position   Int
+  title      String
+  body       String?
+  createdAt  DateTime @default(now())
+
+  vote     Vote     @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([voteId, position])
+  @@index([buildingId])
+}
+
+/// Digital assembly: per-unit attendance / proxy check-in.
+model Attendance {
+  id          String    @id @default(uuid())
+  voteId      String
+  unitId      String
+  buildingId  String
+  present     Boolean
+  proxyUnitId String?
+  checkedInAt DateTime?
+
+  vote     Vote     @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  unit     Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([voteId, unitId])
+  @@index([buildingId])
+}
+
+/// PSD2 open-banking feed connection (one per building + IBAN).
+model BankConnection {
+  id              String    @id @default(uuid())
+  buildingId      String
+  institutionName String
+  iban            String
+  /// offline | gocardless — resolved from OPENBANKING_MODE at creation time.
+  mode            String    @default("offline")
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  building     Building              @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  transactions ImportedTransaction[]
+
+  @@unique([buildingId, iban])
+  @@index([buildingId])
+}
+
+/// Transaction pulled from a bank feed; deduped per provider external id.
+model ImportedTransaction {
+  id             String   @id @default(uuid())
+  connectionId   String
+  buildingId     String
+  externalId     String
+  bookedAt       DateTime
+  amountCents    Int
+  remittanceInfo String?
+  importedAt     DateTime @default(now())
+
+  connection BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalId])
+  @@index([buildingId])
+}
+
+/// Individual water/heat consumption meter for one unit.
+model Meter {
+  id         String  @id @default(uuid())
+  buildingId String
+  unitId     String
+  /// WATER | HEAT — exactly one meter per unit and kind.
+  kind       String
+  label      String?
+
+  building Building       @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unit     Unit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  readings MeterReading[]
+
+  @@unique([unitId, kind])
+  @@index([buildingId])
+}
+
+/// Monthly consumption reading (integer liters or Wh), upserted per period.
+model MeterReading {
+  id      String   @id @default(uuid())
+  meterId String
+  period  String
+  value   Int
+  readAt  DateTime @default(now())
+
+  meter Meter @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@unique([meterId, period])
+  @@index([meterId])
+}
+
+/// Building newsfeed announcement (admin-posted).
+model Announcement {
+  id         String   @id @default(uuid())
+  buildingId String
+  authorId   String
+  title      String
+  body       String
+  pinned     Boolean  @default(false)
+  /// ALL | RESIDENTS
+  audience   String   @default("ALL")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  building Building              @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  author   User                  @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments AnnouncementComment[]
+
+  @@index([buildingId, pinned, createdAt])
+  @@index([authorId])
+}
+
+/// Resident/admin Q&A reply on an announcement.
+model AnnouncementComment {
+  id             String   @id @default(uuid())
+  announcementId String
+  authorId       String
+  body           String
+  createdAt      DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([announcementId, createdAt])
+  @@index([authorId])
+}
+
+/// Τμηματοποίηση οφειλής: installment plan for one unit's arrears.
+model PaymentPlan {
+  id               String    @id @default(uuid())
+  buildingId       String
+  unitId           String
+  totalCents       Int
+  installmentCount Int
+  /// ACTIVE | COMPLETED | CANCELLED — at most ONE ACTIVE plan per unit.
+  status           String    @default("ACTIVE")
+  createdAt        DateTime  @default(now())
+  cancelledAt      DateTime?
+
+  building     Building                 @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unit         Unit                     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  installments PaymentPlanInstallment[]
+
+  @@index([buildingId, status])
+}
+
+model PaymentPlanInstallment {
+  id          String    @id @default(uuid())
+  planId      String
+  seq         Int
+  dueDate     DateTime
+  amountCents Int
+  paidCents   Int       @default(0)
+  paidAt      DateTime?
+
+  plan PaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, seq])
+}
+
+/// White-label branding shown on print outputs and future custom domains.
+model BuildingBranding {
+  buildingId   String   @id
+  logoUrl      String?
+  primaryColor String   @default("#1e40af")
+  accentColor  String   @default("#0ea5e9")
+  orgName      String?
+  footerText   String?
+  customDomain String?  @unique
+  updatedAt    DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+}
+
+/// Marketplace take-rate commission captured when a bid is awarded.
+model JobCommission {
+  id          String    @id @default(uuid())
+  buildingId  String
+  jobId       String    @unique
+  providerId  String
+  baseCents   Int
+  rateBps     Int
+  amountCents Int
+  /// DUE | PAID | WAIVED
+  status      String    @default("DUE")
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  job      Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  provider User     @relation("JobCommissionProvider", fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, createdAt])
+}
+
+/// Paid placement badge in the technician directory.
+model FeaturedSlot {
+  id         String   @id @default(uuid())
+  buildingId String
+  providerId String
+  trade      String?
+  startsAt   DateTime
+  endsAt     DateTime
+  createdAt  DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  provider User     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, endsAt])
+}
+
+/// Free-month credit from the referral program (granted/redeemed per building).
+model ReferralCredit {
+  id               String    @id @default(uuid())
+  buildingId       String
+  sourceBuildingId String?
+  code             String
+  months           Int       @default(1)
+  /// REFERRED | REFERRER
+  reason           String
+  usedAt           DateTime?
+  usedPeriod       String?
+  createdAt        DateTime  @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, usedAt])
+}
+
+/// Partner referral lead (insurance / elevator / energy) with revenue share.
+model PartnerLead {
+  id                      String   @id @default(uuid())
+  buildingId              String
+  partnerName             String
+  /// INSURANCE | ELEVATOR | ENERGY | OTHER
+  category                String
+  contactName             String?
+  contactEmail            String?
+  contactPhone            String?
+  expectedCommissionCents Int
+  actualCommissionCents   Int?
+  /// NEW | CONTACTED | QUOTED | WON | LOST (forward-only pipeline)
+  status                  String   @default("NEW")
+  notes                   String?
+  createdById             String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  building  Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id])
+
+  @@index([buildingId, status])
+}
+
+model TreasuryAccount {
+  id           String          @id @default(uuid())
+  buildingId   String
+  name         String // e.g. "Ταμείο", "Τράπεζα Alpha"
+  type         String // CASH | BANK
+  iban         String?
+  balanceCents Int             @default(0)
+  createdAt    DateTime        @default(now())
+  building     Building        @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  entries      TreasuryEntry[]
+
+  @@unique([buildingId, name])
+  @@index([buildingId])
+}
+
+model TreasuryEntry {
+  id          String          @id @default(uuid())
+  accountId   String
+  buildingId  String
+  amountCents Int // positive inflow, negative outflow
+  direction   String // IN | OUT
+  method      String // CASH | BANK | CHECK | CARD
+  reference   String?
+  notes       String?
+  receiptUrl  String?
+  createdById String?
+  createdAt   DateTime        @default(now())
+  account     TreasuryAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  building    Building        @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, createdAt])
+  @@index([accountId])
+}
+
+model ReserveFund {
+  id            String                @id @default(uuid())
+  buildingId    String                @unique
+  targetCents   Int                   @default(0)
+  balanceCents  Int                   @default(0)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  building      Building              @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  contributions ReserveContribution[]
+  drawdowns     ReserveDrawdown[]
+}
+
+model ReserveContribution {
+  id          String      @id @default(uuid())
+  fundId      String
+  buildingId  String
+  amountCents Int
+  source      String // MANUAL | LEVY | INTEREST
+  levyId      String? // link to extraordinary levy if source=LEVY
+  notes       String?
+  createdAt   DateTime    @default(now())
+  fund        ReserveFund @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  building    Building    @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, createdAt])
+}
+
+model ReserveDrawdown {
+  id          String      @id @default(uuid())
+  fundId      String
+  buildingId  String
+  amountCents Int
+  reason      String
+  expenseId   String?
+  createdAt   DateTime    @default(now())
+  fund        ReserveFund @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  building    Building    @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId])
+}
+
+model ExtraordinaryLevy {
+  id         String             @id @default(uuid())
+  buildingId String
+  title      String
+  totalCents Int
+  strategy   AllocationStrategy // MILIMES | UNITS | CUSTOM
+  status     String // DRAFT | ISSUED | CLOSED
+  voteId     String? // optional linkage to assembly vote
+  createdAt  DateTime           @default(now())
+  building   Building           @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  shares     LevyShare[]
+
+  @@index([buildingId, status])
+}
+
+model LevyShare {
+  id          String            @id @default(uuid())
+  levyId      String
+  unitId      String
+  amountCents Int
+  paidCents   Int               @default(0)
+  levy        ExtraordinaryLevy @relation(fields: [levyId], references: [id], onDelete: Cascade)
+  unit        Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([levyId, unitId])
+}
+
+model VotingEligibilityRule {
+  id               String   @id @default(uuid())
+  buildingId       String
+  /// GENERAL | STRUCTURAL | FINANCIAL — category of decision
+  category         String
+  /// e.g. ["OWNER"] or ["OWNER","TENANT"]
+  allowedTypes     String[]
+  requiresMillimes Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, category])
+  @@index([buildingId])
+}
+
+model SupplierInvoice {
+  id             String   @id @default(uuid())
+  buildingId     String
+  issuerName     String
+  issuerAfm      String?
+  issueDate      DateTime
+  netCents       Int
+  vatCents       Int
+  totalCents     Int
+  currency       String   @default("EUR")
+  mydataMark     String?  @unique
+  classification String?
+  status         String
+  rawJson        Json?
+  pdfUrl         String?
+  expenseId      String?  @unique
+  createdAt      DateTime @default(now())
+  building       Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  expense        Expense? @relation(fields: [expenseId], references: [id])
+
+  @@index([buildingId, status])
+  @@index([buildingId, issueDate])
+}
+
+/// One row per issued refresh token; enables device/session management.
+model RefreshSession {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String
+  userAgent  String?
+  ip         String?
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model BuildingAsset {
+  id          String   @id @default(uuid())
+  buildingId  String
+  name        String
+  category    String // ELEVATOR | BOILER | FIRE_EXT | PUMP | ROOF | OTHER
+  location    String?
+  installedAt DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  schedules MaintenanceSchedule[]
+  inspections InspectionRecord[]
+
+  @@index([buildingId, category])
+}
+
+model MaintenanceSchedule {
+  id                String   @id @default(uuid())
+  assetId           String
+  buildingId        String
+  title             String
+  intervalMonths    Int
+  lastDoneAt        DateTime?
+  nextDueAt         DateTime
+  autoCreateJob     Boolean  @default(true)
+  expenseCategoryId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  asset    BuildingAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  building Building      @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, nextDueAt])
+  @@index([assetId])
+}
+
+model LegalCase {
+  id          String   @id @default(uuid())
+  buildingId  String
+  unitId      String
+  title       String
+  stage       String // NOTICE | LAWYER | COURT | CLOSED
+  status      String // OPEN | SENT | ACKNOWLEDGED | CLOSED
+  totalCents  Int
+  invoiceIds  String[] // linked invoice IDs
+  lawyerName  String?
+  lawyerEmail String?
+  notes       String?
+  lastSentAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  building Building   @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unit     Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  events   LegalEvent[]
+
+  @@index([buildingId, stage])
+  @@index([unitId])
+}
+
+model LegalEvent {
+  id         String  @id @default(uuid())
+  caseId     String
+  buildingId String
+  type       String // CREATED | NOTICE_SENT | ESCALATED | CLOSED | NOTE
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  case     LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  building Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([caseId, createdAt])
+}
+
+/// Feature 1: ledger of scheduled background-job runs (idempotency + observability).
+model JobRun {
+  id         String   @id @default(cuid())
+  buildingId String?
+  jobType    String
+  period     String?
+  status     String // RUNNING | SUCCESS | FAILED
+  message    String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  building Building? @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, jobType, period])
+  @@index([status, startedAt])
+}
+
+/// Feature 3: email verification for open registration.
+model EmailVerification {
+  id          String    @id @default(cuid())
+  userId      String
+  buildingId  String?
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user     User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  building Building? @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Feature 9: mass-email marketing module.
+model Campaign {
+  id          String   @id @default(cuid())
+  buildingId  String
+  subject     String
+  body        String
+  audience    String   @default("ALL")
+  status      String   @default("DRAFT") // DRAFT | SCHEDULED | SENDING | SENT
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  sentCount   Int      @default(0)
+  failCount   Int      @default(0)
+  trackOpens  Boolean  @default(true)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  building   Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  createdBy  User                @relation("CampaignCreatedBy", fields: [createdById], references: [id])
+  recipients CampaignRecipient[]
+
+  @@index([buildingId, status])
+}
+
+model CampaignRecipient {
+  id         String    @id @default(cuid())
+  campaignId String
+  userId     String
+  email      String
+  status     String // QUEUED | SENT | FAILED | OPENED
+  sentAt     DateTime?
+  openedAt   DateTime?
+  error      String?
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, userId])
+  @@index([campaignId])
+}
+
+/// Feature 10: points / rewards ledger (balance = SUM(delta)).
+model PointTransaction {
+  id           String   @id @default(cuid())
+  buildingId   String
+  userId       String
+  delta        Int
+  reason       String // ONTIME_PAYMENT | ATTENDANCE | MANUAL_ADJ | REDEEM
+  refType      String?
+  refId        String?
+  balanceAfter Int
+  createdAt    DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, reason, refId])
+  @@index([userId, createdAt])
+  @@index([buildingId])
+}
+
+/// Feature 13: inventory / product catalog (one-off purchases).
+model Product {
+  id         String  @id @default(cuid())
+  buildingId String
+  name       String
+  priceCents Int
+  stock      Int     @default(0)
+  imageKey   String?
+  active     Boolean @default(true)
+  createdAt  DateTime @default(now())
+
+  building Building       @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  orders   ProductOrder[]
+
+  @@index([buildingId, active])
+}
+
+model ProductOrder {
+  id          String   @id @default(cuid())
+  buildingId  String
+  unitId      String
+  productId   String
+  qty         Int
+  amountCents Int
+  status      String   @default("PENDING") // PENDING | PAID | CANCELLED
+  paymentRef  String?
+  invoiceId   String?
+  createdAt   DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unit     Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([buildingId, status])
+  @@index([unitId])
+}
+
+/// Feature 14: per-admin granular permission grants (allow-list).
+model AdminPermission {
+  id            String   @id @default(cuid())
+  userId        String
+  buildingId    String
+  permissionKey String
+  grantedById   String
+  createdAt     DateTime @default(now())
+
+  user      User     @relation("AdminPermissionGrantedBy", fields: [grantedById], references: [id])
+  building  Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, buildingId, permissionKey])
+  @@index([buildingId])
+}
+
+/// Feature 15: facility inspection / asset lifecycle records.
+model InspectionRecord {
+  id          String    @id @default(uuid())
+  assetId     String
+  buildingId  String
+  inspectedAt DateTime
+  inspectorId String?
+  result      String // OK | NG | REPAIR_NEEDED
+  photoKey    String?
+  notes       String?
+  jobId       String?
+  createdAt   DateTime  @default(now())
+
+  asset    BuildingAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  building Building      @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  inspector User?        @relation(fields: [inspectorId], references: [id], onDelete: SetNull)
+  job      Job?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([assetId, inspectedAt])
+  @@index([buildingId])
+}
+
+/// Feature 18: outbound webhook endpoints + delivery log.
+model WebhookEndpoint {
+  id         String    @id @default(cuid())
+  buildingId String
+  url        String
+  secret     String
+  events     String[]
+  active     Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  building   Building            @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([buildingId, active])
+}
+
+model WebhookDelivery {
+  id          String    @id @default(cuid())
+  endpointId  String
+  event       String
+  payload     Json
+  status      String    @default("PENDING") // PENDING | SUCCESS | FAILED
+  attempts    Int       @default(0)
+  lastStatus  Int?
+  response    String?
+  nextRetryAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  endpoint WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@index([endpointId, status, nextRetryAt])
+}
+
+/// Feature 20: weekly KPI snapshots + anomaly alert rules.
+model BuildingWeeklySnapshot {
+  id             String   @id @default(cuid())
+  buildingId     String
+  weekStart      DateTime
+  invoicedCents  Int
+  collectedCents Int
+  arrearsCents   Int
+  arrearsUnits   Int
+  collectionRate Float
+  openJobs       Int
+  newDefects     Int
+  createdAt      DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, weekStart])
+  @@index([buildingId])
+}
+
+model AlertRule {
+  id          String   @id @default(cuid())
+  buildingId  String
+  metric      String // COLLECTION_RATE | ARREARS_WOW | DEFECTS_7D | PSP_FAILURES
+  threshold   Float
+  window      String   @default("7d")
+  active      Boolean  @default(true)
+  lastFiredAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, metric])
+}

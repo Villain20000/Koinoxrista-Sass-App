@@ -1,0 +1,56 @@
+MODULE REGISTRATION — add to apps/api/src/app/app.module.ts
+
+1) Import:
+import { LegalModule } from '../legal/legal.module';
+
+2) Add to @Module imports array:
+LegalModule,
+
+Full imports section should include:
+  PrismaModule,
+  AuthModule,
+  BuildingsModule,
+  UnitsModule,
+  OwnershipsModule,
+  ExpenseCategoriesModule,
+  ExpensesModule,
+  InvoicesModule,
+  PaymentsModule,
+  RemindersModule,
+  ExportsModule,
+  VotesModule,
+  JobsModule,
+  DocumentsModule,
+  MembershipsModule,
+  MyDataModule,
+  ApiKeysModule,
+  SubscriptionsModule,
+  GdprModule,
+  AuditModule,
+  ProvidersModule,
+  NotificationsModule,
+  RecurringModule,
+  BankImportModule,
+  ReportsModule,
+  InvitesModule,
+  ComplianceModule,
+  BudgetsModule,
+  TransferModule,
+  PayoutsModule,
+  ExcelImportModule,
+  LateFeesModule,
+  AccountantSeatModule,
+  SelfBillingModule,
+  AssemblyModule,
+  OpenBankingModule,
+  MetersModule,
+  AnnouncementsModule,
+  PaymentPlansModule,
+  BrandingModule,
+  MarketplaceModule,
+  ReferralsModule,
+  PartnersModule,
+  MaintenanceModule,
+  LegalModule,
+
+Note: LegalModule imports AuditModule (global Notifications not required). Provides LegalService and LegalController.

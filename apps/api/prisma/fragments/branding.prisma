@@ -1,0 +1,21 @@
+// White-label branding per building (Premium tier differentiator).
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs the inverse relation
+// on the existing model:
+//   Building { branding BuildingBranding? }
+
+model BuildingBranding {
+  buildingId String @id
+  logoUrl    String?
+  /// Print header colors; hex like "#RRGGBB" or "#RGB".
+  primaryColor String @default("#1e40af")
+  accentColor  String @default("#0ea5e9")
+  /// Organization display name shown on print headers (defaults to building name).
+  orgName   String?
+  footerText String?
+  /// Reserved for future custom-domain serving; validated but unused at runtime.
+  customDomain String? @unique
+  updatedAt DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id])
+}

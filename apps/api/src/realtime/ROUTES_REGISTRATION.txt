@@ -1,0 +1,7 @@
+RealtimeModule routes (registered in AppModule):
+
+GET  /api/realtime/events   SSE stream (auth via HttpOnly refresh cookie)
+  - emits heartbeat every 25s
+  - user-scoped events: notification.created
+  - building-scoped events: vote.updated, vote.closed,
+    announcement.created, assembly.attendance

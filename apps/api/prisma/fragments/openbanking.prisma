@@ -1,0 +1,40 @@
+// Open-banking (PSD2) feed reconciliation fragment.
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs the inverse relation
+// field on the existing model (schema.prisma is orchestrator-owned):
+//   Building { ...; bankConnections BankConnection[] }
+// Finally create the migration from prisma/fragments/openbanking.sql.
+
+model BankConnection {
+  id              String    @id @default(uuid())
+  buildingId      String
+  institutionName String
+  iban            String
+  /// offline | gocardless — resolved from OPENBANKING_MODE at creation time.
+  mode            String    @default("offline")
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  building     Building             @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  transactions ImportedTransaction[]
+
+  @@unique([buildingId, iban])
+  @@index([buildingId])
+}
+
+model ImportedTransaction {
+  id             String   @id @default(uuid())
+  connectionId   String
+  buildingId     String
+  /// Provider-stable identifier; re-syncs dedupe on it.
+  externalId     String
+  bookedAt       DateTime
+  amountCents    Int
+  remittanceInfo String?
+  importedAt     DateTime @default(now())
+
+  connection BankConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, externalId])
+  @@index([buildingId])
+}

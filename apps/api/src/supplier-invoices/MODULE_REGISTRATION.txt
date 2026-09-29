@@ -1,0 +1,57 @@
+MODULE REGISTRATION — add to apps/api/src/app/app.module.ts
+
+1) Import:
+import { SupplierInvoicesModule } from '../supplier-invoices/supplier-invoices.module';
+
+2) Add to @Module imports array:
+SupplierInvoicesModule,
+
+Full imports section should include (order not critical, but keep grouped):
+  PrismaModule,
+  AuthModule,
+  BuildingsModule,
+  UnitsModule,
+  OwnershipsModule,
+  ExpenseCategoriesModule,
+  ExpensesModule,
+  InvoicesModule,
+  PaymentsModule,
+  RemindersModule,
+  ExportsModule,
+  VotesModule,
+  JobsModule,
+  DocumentsModule,
+  MembershipsModule,
+  MyDataModule,
+  ApiKeysModule,
+  SubscriptionsModule,
+  GdprModule,
+  AuditModule,
+  ProvidersModule,
+  NotificationsModule,
+  RecurringModule,
+  BankImportModule,
+  ReportsModule,
+  InvitesModule,
+  ComplianceModule,
+  BudgetsModule,
+  TransferModule,
+  PayoutsModule,
+  ExcelImportModule,
+  LateFeesModule,
+  AccountantSeatModule,
+  SelfBillingModule,
+  AssemblyModule,
+  OpenBankingModule,
+  MetersModule,
+  AnnouncementsModule,
+  PaymentPlansModule,
+  BrandingModule,
+  MarketplaceModule,
+  ReferralsModule,
+  PartnersModule,
+  MaintenanceModule,
+  SupplierInvoicesModule,
+
+Note: SupplierInvoicesModule imports AuditModule and provides OcrService + MyDataPullService.
+      Prisma schema must be extended with SCHEMA_ADDITION.prisma before `prisma generate`.

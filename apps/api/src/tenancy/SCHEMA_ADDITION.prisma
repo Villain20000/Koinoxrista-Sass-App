@@ -1,0 +1,50 @@
+// SCHEMA_ADDITION.prisma — Tenancy / Owner vs Tenant + Voting Rights Matrix (Πολυκατοικία — Ενοικιαστής/Ιδιοκτήτης)
+// =============================================================================
+// Copy the fragment below into `apps/api/prisma/schema.prisma` and extend
+// the `Building` model with the relation fields shown. Do NOT edit the
+// schema directly in this task branch — this file is the source of truth
+// for the orchestrator migration.
+// After merging run:  pnpm prisma generate && pnpm prisma migrate dev --name tenancy
+// =============================================================================
+
+// -------------------------------------------------------------------------
+// 1) Inside `model Building { ... }` add:
+// -------------------------------------------------------------------------
+// votingEligibilityRules VotingEligibilityRule[]
+
+// -------------------------------------------------------------------------
+// 2) ALTER `model Ownership` — add three occupancy columns:
+//    Existing model already has: id, unitId, userId, shareMillimes, periodStart
+//    Add after `periodStart`:
+// -------------------------------------------------------------------------
+// occupantType   String   @default("OWNER") // OWNER | TENANT
+// votingEligible Boolean  @default(true)    // stored for audit; computed eligibility may differ
+// residentRole   String?                   // mirrors role but scoped to this occupancy (e.g. RESIDENT, TENANT)
+
+// The raw SQL to apply if the table already exists:
+//
+// ALTER TABLE "Ownership" ADD COLUMN IF NOT EXISTS "occupantType" TEXT NOT NULL DEFAULT 'OWNER';
+// ALTER TABLE "Ownership" ADD COLUMN IF NOT EXISTS "votingEligible" BOOLEAN NOT NULL DEFAULT true;
+// ALTER TABLE "Ownership" ADD COLUMN IF NOT EXISTS "residentRole" TEXT;
+//
+// // Backfill note: existing rows default to OWNER + eligible, matching pre-matrix behaviour.
+// // Consider: UPDATE "Ownership" SET "occupantType"='OWNER', "votingEligible"=true WHERE "occupantType" IS NULL;
+
+// -------------------------------------------------------------------------
+// 3) New model (paste verbatim)
+// -------------------------------------------------------------------------
+model VotingEligibilityRule {
+  id               String   @id @default(uuid())
+  buildingId       String
+  /// GENERAL | STRUCTURAL | FINANCIAL — category of decision
+  category         String
+  /// e.g. ["OWNER"] or ["OWNER","TENANT"]
+  allowedTypes     String[]
+  requiresMillimes Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, category])
+  @@index([buildingId])
+}

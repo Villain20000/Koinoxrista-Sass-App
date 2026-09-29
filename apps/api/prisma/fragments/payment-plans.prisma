@@ -1,0 +1,42 @@
+// Τμηματοποίηση οφειλής — installment plans for a unit's arrears.
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs the inverse relation
+// fields on the existing models:
+//   Building { paymentPlans PaymentPlan[] }
+//   Unit     { paymentPlans PaymentPlan[] }
+
+// ----- PaymentPlan -----
+model PaymentPlan {
+  id               String    @id @default(uuid())
+  buildingId       String
+  unitId           String
+  totalCents       Int
+  installmentCount Int
+  /// ACTIVE | COMPLETED | CANCELLED — at most ONE ACTIVE plan per unit.
+  status           String    @default("ACTIVE")
+  createdAt        DateTime  @default(now())
+  cancelledAt      DateTime?
+
+  building     Building                @relation(fields: [buildingId], references: [id])
+  unit         Unit                    @relation(fields: [unitId], references: [id])
+  installments PaymentPlanInstallment[]
+
+  @@index([buildingId, status])
+}
+
+// ----- PaymentPlanInstallment -----
+model PaymentPlanInstallment {
+  id          String    @id @default(uuid())
+  planId      String
+  /// 1-based position within the plan; payments settle lowest seq first.
+  seq         Int
+  dueDate     DateTime
+  amountCents Int
+  /// Partial balances are allowed; full payment stamps paidAt.
+  paidCents   Int       @default(0)
+  paidAt      DateTime?
+
+  plan PaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, seq])
+}

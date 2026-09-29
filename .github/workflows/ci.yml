@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      # No `packageManager` field in package.json - pnpm major is pinned here.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm exec prisma generate --schema=apps/api/prisma/schema.prisma
+
+      # Unit tests must not require a database - no services are started yet.
+      # A Postgres service container will be added when API e2e tests arrive.
+      - name: Lint, test and build
+        run: pnpm nx run-many -t lint test build --all
+
+      # Future use: restrict to projects affected by the change set instead.
+      # - name: Lint, test and build (affected)
+      #   run: pnpm nx affected -t lint test build

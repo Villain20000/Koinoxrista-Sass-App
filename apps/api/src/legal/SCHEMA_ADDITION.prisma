@@ -1,0 +1,41 @@
+// SCHEMA ADDITION for Feature 6 — copy into apps/api/prisma/schema.prisma
+// Building additions:
+model Building {
+  // ... existing fields
+  legalCases  LegalCase[]
+  legalEvents LegalEvent[]
+}
+
+model LegalCase {
+  id          String @id @default(uuid())
+  buildingId  String
+  unitId      String
+  title       String
+  stage       String // NOTICE | LAWYER | COURT | CLOSED
+  status      String // OPEN | SENT | ACKNOWLEDGED | CLOSED
+  totalCents  Int
+  invoiceIds  String[] // linked invoice IDs
+  lawyerName  String?
+  lawyerEmail String?
+  notes       String?
+  lastSentAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  building    Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  unit        Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  events      LegalEvent[]
+  @@index([buildingId, stage])
+  @@index([unitId])
+}
+
+model LegalEvent {
+  id         String @id @default(uuid())
+  caseId     String
+  buildingId String
+  type       String // CREATED | NOTICE_SENT | ESCALATED | CLOSED | NOTE
+  payload    Json?
+  createdAt  DateTime @default(now())
+  case       LegalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  @@index([caseId, createdAt])
+}

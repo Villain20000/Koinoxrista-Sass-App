@@ -1,0 +1,43 @@
+// SCHEMA_ADDITION for Feature 5 — Inbound Supplier E-Invoices (myDATA pull + OCR)
+// Copy into apps/api/prisma/schema.prisma
+
+// ──────────────────────────────────────────────────────────────────────────
+// Building addition:
+// ──────────────────────────────────────────────────────────────────────────
+model Building {
+  // ... existing fields
+  supplierInvoices SupplierInvoice[]
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// New model: SupplierInvoice
+// ──────────────────────────────────────────────────────────────────────────
+model SupplierInvoice {
+  id              String   @id @default(uuid())
+  buildingId      String
+  issuerName      String
+  issuerAfm       String?
+  issueDate       DateTime
+  netCents        Int
+  vatCents        Int
+  totalCents      Int
+  currency        String   @default("EUR")
+  mydataMark      String?  @unique
+  classification  String?  // myDATA category
+  status          String   // DRAFT | IMPORTED | MATCHED | VOIDED
+  rawJson         Json?
+  pdfUrl          String?
+  expenseId       String?  @unique
+  createdAt       DateTime @default(now())
+  building        Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  expense         Expense? @relation(fields: [expenseId], references: [id])
+
+  @@index([buildingId, status])
+  @@index([buildingId, issueDate])
+}
+
+// Note: add relation field to Expense if you want back-reference (optional):
+// model Expense {
+//   // ... existing fields
+//   supplierInvoice SupplierInvoice?
+// }

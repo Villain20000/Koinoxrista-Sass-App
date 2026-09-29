@@ -1,0 +1,53 @@
+// ROUTES_REGISTRATION.txt — Tenancy / Owner vs Tenant + Voting Rights Matrix
+// =============================================================================
+// Backend routes are registered automatically via the TenancyController
+// decorator `@Controller('buildings/:buildingId')` once TenancyModule
+// is imported in AppModule (see MODULE_REGISTRATION.txt). No additional
+// global route wiring is required.
+//
+// Exposed endpoints (all ADMIN-only, tenant-scoped via common/tenant.ts):
+//   GET  /buildings/:buildingId/occupancy/:unitId
+//        — list occupants for a unit with occupantType/votingEligible
+//   PUT  /buildings/:buildingId/occupancy/:unitId
+//        — body { userId, occupantType: 'OWNER'|'TENANT', votingEligible?: boolean, residentRole?: string|null, shareMillimes?: number, periodStart?: string }
+//        — upserts Ownership row; validates building membership & tenant isolation; audits `tenancy.occupancy.set`
+//   GET  /buildings/:buildingId/eligibility-rules
+//        — list VotingEligibilityRule rows for the building
+//   PUT  /buildings/:buildingId/eligibility-rules
+//        — body { category: 'GENERAL'|'STRUCTURAL'|'FINANCIAL', allowedTypes: ('OWNER'|'TENANT')[], requiresMillimes?: boolean }
+//        — upserts per category (buildingId+category unique); audits `tenancy.rule.upsert`
+//   GET  /buildings/:buildingId/votes/:voteId/eligibility/:unitId
+//        — { eligible: boolean, reason: string, occupantType?, ruleCategory?, allowedTypes? }
+//        — checks unit's occupantType + votingEligible against rule; handles MILLIMES_MAJORITY vs HEADCOUNT/SIMPLE_MAJORITY
+//
+// The helper `TenancyService.computeEligibleTally(buildingId, voteId, user)` is
+// NOT exposed as HTTP route — it is a service method for VotesService integration:
+//
+//   // in VotesService.close / get:
+//   const tally = await this.tenancy.computeEligibleTally(vote.buildingId, vote.id, user);
+//
+// It filters ballots to the eligible pool (allowedTypes + votingEligible) and
+// calls `tallyVote` with eligibleUnitsCount / totalEligibleMillimes, respecting
+// VotingEligibilityRule.requiresMillimes (false forces SIMPLE_MAJORITY / HEADCOUNT).
+//
+// Frontend route to register (guard is ADMIN):
+// =============================================================================
+// In apps/web/src/app/app.routes.ts, under the `path: 'admin'` children array,
+// after the meters route add:
+//
+//   {
+//     path: 'tenancy',
+//     loadComponent: () =>
+//       import('./pages/admin/admin-occupancy.component').then(
+//         (m) => m.AdminOccupancyPage,
+//       ),
+//   },
+//
+// Or `path: 'occupancy'` if you prefer the task literal.
+//
+// And add a nav link in apps/web/src/app/layout/layout.component.ts NAV_GROUPS.ADMIN:
+//   { path: '/admin/tenancy', label: 'Ενοικιαστές & Ψήφοι' },
+//
+// Navigation is optional; the page is reachable directly via URL even before
+// the nav item is merged.
+// =============================================================================

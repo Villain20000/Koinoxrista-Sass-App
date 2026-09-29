@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "PolykatoikiaOS",
+    "slug": "polykatoikiaos-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "polykatoikiaos",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.polykatoikiaos.mobile"
+    },
+    "android": {
+      "package": "com.polykatoikiaos.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0f766e"
+      }
+    },
+    "extra": {
+      "apiUrl": "https://api.example.com"
+    }
+  }
+}

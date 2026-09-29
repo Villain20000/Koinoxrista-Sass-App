@@ -1,0 +1,50 @@
+// Marketplace monetization: job commissions (platform take-rate) and featured
+// provider placements in a building directory.
+//
+// NOTE (orchestrator wiring): `schema.prisma` also needs the inverse relation
+// fields on the existing models:
+//   Building { jobCommissions JobCommission[]   featuredSlots FeaturedSlot[] }
+//   Job      { commission     JobCommission? }
+//   User     { jobCommissions JobCommission[]   featuredSlots FeaturedSlot[] }
+
+// ----- JobCommission -----
+/// Platform take-rate on an awarded RFP job; ONE row per awarded job.
+model JobCommission {
+  id          String    @id @default(uuid())
+  buildingId  String
+  jobId       String    @unique
+  providerId  String
+  /// Awarded bid amount the commission was computed from, in cents.
+  baseCents   Int
+  /// Take rate in basis points (400 = 4%) at award time.
+  rateBps     Int
+  /// Commission amount in cents (rounded half-up, after the cap).
+  amountCents Int
+  /// DUE | PAID | WAIVED
+  status      String    @default("DUE")
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  job      Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  provider User     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, createdAt])
+}
+
+// ----- FeaturedSlot -----
+/// Featured provider placement in one building's directory for a period.
+model FeaturedSlot {
+  id         String   @id @default(uuid())
+  buildingId String
+  providerId String
+  trade      String?
+  startsAt   DateTime
+  endsAt     DateTime
+  createdAt  DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  provider User     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, endsAt])
+}

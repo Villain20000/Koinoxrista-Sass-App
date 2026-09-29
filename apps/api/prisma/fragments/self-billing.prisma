@@ -1,0 +1,27 @@
+// Self-billing fragment: append to apps/api/prisma/schema.prisma, then add the
+// back-relations below to the existing models (schema.prisma is orchestrator-
+// owned):
+//   model Building     { ...; platformInvoices PlatformInvoice[] }
+//   model Subscription { ...; platformInvoices PlatformInvoice[] }
+// Finally create the migration from prisma/fragments/self-billing.sql.
+
+model PlatformInvoice {
+  id             String    @id @default(uuid())
+  buildingId     String
+  subscriptionId String?
+  number         String    @unique
+  /// `YYYY-MM` for recurring fees, `YYYY-MM-ADJ-<n>` for tier-change deltas.
+  period         String
+  /// Subscription tier snapshot at issuance time.
+  tier           String
+  /// Units count snapshot at issuance time.
+  units          Int
+  amountCents    Int
+  /// ISSUED | PAID | VOID.
+  status         String    @default("ISSUED")
+  issuedAt       DateTime  @default(now())
+  paidAt         DateTime?
+
+  @@unique([subscriptionId, period])
+  @@index([buildingId])
+}

@@ -1,0 +1,35 @@
+// ROUTES_REGISTRATION.txt — Treasury (Ταμείο)
+// =============================================================================
+// Backend routes are registered automatically via the TreasuryController
+// decorator `@Controller('buildings/:buildingId/treasury')` once TreasuryModule
+// is imported in AppModule (see MODULE_REGISTRATION.txt). No additional
+// global route wiring is required.
+//
+// Exposed endpoints (all ADMIN-only, tenant-scoped via common/tenant.ts):
+//   GET  /buildings/:buildingId/treasury/accounts
+//   POST /buildings/:buildingId/treasury/accounts          — 409 on duplicate name
+//   GET  /buildings/:buildingId/treasury/entries?accountId=&from=&to=&skip=&take=
+//   POST /buildings/:buildingId/treasury/entries           — atomically increments balance
+//   GET  /buildings/:buildingId/treasury/balance            — KPI summary + chart data
+//
+// No DELETE endpoint — ledger is append-only. Void by posting opposite entry.
+//
+// Frontend route to register (optional; guard is ADMIN):
+// =============================================================================
+// In apps/web/src/app/app.routes.ts, under the `path: 'admin'` children array,
+// after the payouts route add:
+//
+//   {
+//     path: 'treasury',
+//     loadComponent: () =>
+//       import('./pages/admin/admin-treasury.component').then(
+//         (m) => m.AdminTreasuryPage,
+//       ),
+//   },
+//
+// And add a nav link in apps/web/src/app/layout/layout.component.ts NAV_GROUPS.ADMIN:
+//   { path: '/admin/treasury', label: 'Ταμείο' },
+//
+// Navigation is optional; the page is reachable directly via URL even before
+// the nav item is merged.
+// =============================================================================

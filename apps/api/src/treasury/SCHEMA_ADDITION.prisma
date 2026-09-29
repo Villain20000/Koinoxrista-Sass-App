@@ -1,0 +1,49 @@
+// SCHEMA_ADDITION.prisma — Treasury / Petty Cash Ledger (Ταμείο)
+// =============================================================================
+// Copy the models below into `apps/api/prisma/schema.prisma` (near other per-building
+// domain models) and extend the `Building` model with the two relation fields shown.
+// After merging run:  pnpm prisma generate   &&   pnpm prisma migrate dev --name treasury
+// =============================================================================
+
+// -------------------------------------------------------------------------
+// 1) Add the following relation fields inside `model Building { ... }`
+// -------------------------------------------------------------------------
+// treasuryAccounts TreasuryAccount[]
+// treasuryEntries  TreasuryEntry[]
+
+// -------------------------------------------------------------------------
+// 2) Add these two new models
+// -------------------------------------------------------------------------
+model TreasuryAccount {
+  id         String @id @default(uuid())
+  buildingId String
+  name       String // e.g. "Ταμείο", "Τράπεζα Alpha"
+  type       String // CASH | BANK
+  iban       String?
+  balanceCents Int @default(0)
+  createdAt  DateTime @default(now())
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  entries    TreasuryEntry[]
+
+  @@unique([buildingId, name])
+  @@index([buildingId])
+}
+
+model TreasuryEntry {
+  id         String @id @default(uuid())
+  accountId  String
+  buildingId String
+  amountCents Int // positive inflow, negative outflow
+  direction  String // IN | OUT
+  method     String // CASH | BANK | CHECK | CARD
+  reference  String?
+  notes      String?
+  receiptUrl String?
+  createdById String?
+  createdAt  DateTime @default(now())
+  account    TreasuryAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, createdAt])
+  @@index([accountId])
+}

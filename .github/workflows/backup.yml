@@ -1,0 +1,49 @@
+name: Nightly backup
+
+on:
+  schedule:
+    # 02:30 UTC every night; overridable via a manual dispatch too.
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Dump Postgres database
+        run: |
+          pg_dump \
+            --dbname="$DATABASE_URL" \
+            --format=custom \
+            --compress=6 \
+            --file="/tmp/polyos-$(date -u +%Y%m%d-%H%M%S).dump"
+        env:
+          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+
+      - name: Upload to S3-compatible bucket (30-day retention, SSE-S3)
+        run: |
+          aws s3 cp /tmp/polyos-*.dump \
+            "s3://$BUCKET/pg/$(date -u +%Y/%m)/" \
+            --endpoint-url "$ENDPOINT" \
+            --sse aws:kms
+          # Prune dumps older than 30 days.
+          purge_before=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          aws s3 ls --endpoint-url "$ENDPOINT" "s3://$BUCKET/pg/" --recursive \
+            | awk '{print $1"\t"$4}' \
+            | while IFS=$'\t' read -r mtime key; do
+                if [[ "$mtime" < "$purge_before" ]]; then
+                  aws s3 rm --endpoint-url "$ENDPOINT" "s3://$BUCKET/$key"
+                fi
+              done
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
+          BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ vars.BACKUP_S3_ENDPOINT || 'https://s3.amazonaws.com' }}

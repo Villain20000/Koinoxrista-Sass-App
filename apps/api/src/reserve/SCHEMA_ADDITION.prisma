@@ -1,0 +1,85 @@
+// SCHEMA_ADDITION.prisma — Reserve Fund & Extraordinary Levies (Αποθεματικό + Έκτακτες Εισφορές)
+// =============================================================================
+// Copy the models below into `apps/api/prisma/schema.prisma` (near other per-building
+// domain models) and extend the `Building` model with the relation fields shown.
+// After merging run:  pnpm prisma generate && pnpm prisma migrate dev --name reserve
+// =============================================================================
+
+// -------------------------------------------------------------------------
+// 1) Add the following relation fields inside `model Building { ... }`
+// -------------------------------------------------------------------------
+// reserveFund          ReserveFund?           @relation
+// reserveContributions ReserveContribution[]
+// reserveDrawdowns     ReserveDrawdown[]
+// extraordinaryLevy    ExtraordinaryLevy[]
+
+// -------------------------------------------------------------------------
+// 2) Add these new models (fragment to paste)
+// -------------------------------------------------------------------------
+model ReserveFund {
+  id           String                @id @default(uuid())
+  buildingId   String                @unique
+  targetCents  Int                   @default(0)
+  balanceCents Int                   @default(0)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  building     Building              @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  contributions ReserveContribution[]
+  drawdowns     ReserveDrawdown[]
+}
+
+model ReserveContribution {
+  id          String      @id @default(uuid())
+  fundId      String
+  buildingId  String
+  amountCents Int
+  source      String      // MANUAL | LEVY | INTEREST
+  levyId      String?     // link to extraordinary levy if source=LEVY
+  notes       String?
+  createdAt   DateTime    @default(now())
+  fund        ReserveFund @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  building    Building    @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId, createdAt])
+}
+
+model ReserveDrawdown {
+  id          String      @id @default(uuid())
+  fundId      String
+  buildingId  String
+  amountCents Int
+  reason      String
+  expenseId   String?
+  createdAt   DateTime    @default(now())
+  fund        ReserveFund @relation(fields: [fundId], references: [id], onDelete: Cascade)
+  building    Building    @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@index([buildingId])
+}
+
+model ExtraordinaryLevy {
+  id         String             @id @default(uuid())
+  buildingId String
+  title      String
+  totalCents Int
+  strategy   AllocationStrategy // MILIMES | UNITS | CUSTOM
+  status     String             // DRAFT | ISSUED | CLOSED
+  voteId     String?            // optional linkage to assembly vote
+  createdAt  DateTime           @default(now())
+  building   Building           @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  shares     LevyShare[]
+
+  @@index([buildingId, status])
+}
+
+model LevyShare {
+  id          String            @id @default(uuid())
+  levyId      String
+  unitId      String
+  amountCents Int
+  paidCents   Int               @default(0)
+  levy        ExtraordinaryLevy @relation(fields: [levyId], references: [id], onDelete: Cascade)
+  unit        Unit              @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([levyId, unitId])
+}

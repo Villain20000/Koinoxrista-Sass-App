@@ -1,0 +1,37 @@
+// ROUTES_REGISTRATION.txt — Reserve Fund & Extraordinary Levies (Αποθεματικό)
+// =============================================================================
+// Backend routes are registered automatically via the ReserveController
+// decorator `@Controller('buildings/:buildingId/reserve')` once ReserveModule
+// is imported in AppModule (see MODULE_REGISTRATION.txt). No additional
+// global route wiring is required.
+//
+// Exposed endpoints (all ADMIN-only, tenant-scoped via common/tenant.ts):
+//   GET   /buildings/:buildingId/reserve/fund
+//   PATCH /buildings/:buildingId/reserve/target            — body { targetCents: number }
+//   POST  /buildings/:buildingId/reserve/contribute        — body { amountCents, source, notes?, levyId? }
+//   POST  /buildings/:buildingId/reserve/drawdown          — body { amountCents, reason, expenseId? } — 400 if insufficient balance
+//   GET   /buildings/:buildingId/reserve/levies
+//   POST  /buildings/:buildingId/reserve/levies            — body { title, totalCents, strategy, customWeights?, voteId? } — uses splitByLargestRemainder
+//   GET   /buildings/:buildingId/reserve/levies/:id
+//   POST  /buildings/:buildingId/reserve/levies/:id/issue  — marks ISSUED, creates contributions, increments fund
+//   POST  /buildings/:buildingId/reserve/levies/:id/close  — marks CLOSED (only from ISSUED)
+//
+// Frontend route to register (guard is ADMIN):
+// =============================================================================
+// In apps/web/src/app/app.routes.ts, under the `path: 'admin'` children array,
+// after the payouts route add:
+//
+//   {
+//     path: 'reserve',
+//     loadComponent: () =>
+//       import('./pages/admin/admin-reserve.component').then(
+//         (m) => m.AdminReservePage,
+//       ),
+//   },
+//
+// And add a nav link in apps/web/src/app/layout/layout.component.ts NAV_GROUPS.ADMIN:
+//   { path: '/admin/reserve', label: 'Αποθεματικό' },
+//
+// Navigation is optional; the page is reachable directly via URL even before
+// the nav item is merged.
+// =============================================================================

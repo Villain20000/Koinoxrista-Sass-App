@@ -1,0 +1,44 @@
+// Digital assembly (ψηφοφορίες/συνελεύσεις) fragment: append to
+// apps/api/prisma/schema.prisma, then add the back-relations below to the
+// existing models (schema.prisma is orchestrator-owned):
+//   model Vote     { ...; agendaItems AgendaItem[]; attendances Attendance[] }
+//   model Building { ...; agendaItems  AgendaItem[]; attendances Attendance[] }
+//   model Unit     { ...; attendances  Attendance[] }
+// Finally create the migration from prisma/fragments/assembly.sql.
+
+// ----- AgendaItem -----
+model AgendaItem {
+  id         String @id @default(uuid())
+  voteId     String
+  buildingId String
+  /// Discussion order within the assembly's agenda (1-based, dense).
+  position   Int
+  title      String
+  body       String?
+  createdAt  DateTime @default(now())
+
+  vote     Vote     @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([voteId, position])
+  @@index([buildingId])
+}
+
+// ----- Attendance -----
+model Attendance {
+  id          String    @id @default(uuid())
+  voteId      String
+  unitId      String
+  buildingId  String
+  present     Boolean
+  /// Unit represented by proxy when this unit checks in through another owner.
+  proxyUnitId String?
+  checkedInAt DateTime?
+
+  vote     Vote     @relation(fields: [voteId], references: [id], onDelete: Cascade)
+  unit     Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([voteId, unitId])
+  @@index([buildingId])
+}

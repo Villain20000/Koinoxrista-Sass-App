@@ -1,0 +1,36 @@
+// MODULE_REGISTRATION.txt — Reserve Fund & Extraordinary Levies (Αποθεματικό)
+// =============================================================================
+// Do NOT edit schema.prisma or app.module.ts directly per task instructions.
+// Merge these imports manually (or via the main agent).
+// =============================================================================
+
+1) In apps/api/src/app/app.module.ts:
+   ------------------------------------------------------------
+   import { ReserveModule } from '../reserve/reserve.module';
+   ------------------------------------------------------------
+   Add to the `imports: [ ... ]` array (keep alphabetical-ish near PayoutsModule):
+   ------------------------------------------------------------
+     ComplianceModule,
+     BudgetsModule,
+     TransferModule,
+     PayoutsModule,
+     TreasuryModule,
+     ReserveModule,   // <-- add this
+     ExcelImportModule,
+   ------------------------------------------------------------
+
+2) No additional providers, guards, or global pipes required.
+   - ReserveModule already imports AuditModule.
+   - JwtAuthGuard + RolesGuard are applied per-controller (ADMIN only).
+   - Global ThrottlerGuard is registered in AuthModule (app-wide) — reserve routes
+     automatically inherit throttling; no extra ThrottlerModule import needed.
+   - ValidationPipe is applied per-controller with { whitelist: true, forbidNonWhitelisted: true, transform: true }.
+
+3) After merging the Prisma fragment:
+     pnpm prisma generate
+     pnpm prisma migrate dev --name reserve
+
+4) ReserveFund is per-building (buildingId @unique). getOrCreateFund is idempotent;
+   drawing more than balance returns 400 BadRequest ('Insufficient reserve balance').
+   Levy lifecycle: DRAFT -> ISSUED -> CLOSED. Issuing increments fund balance atomically and creates
+   per-share ReserveContribution rows with source=LEVY.

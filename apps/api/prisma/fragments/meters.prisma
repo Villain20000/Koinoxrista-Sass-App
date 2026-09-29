@@ -1,0 +1,56 @@
+// Individual water/heating consumption meters (Phase: meters).
+// ENUM ADDITION: enum AllocationStrategy += METERS (integrator)
+//
+// The `AllocationStrategy` enum lives in apps/api/prisma/schema.prisma; append
+// the value there:
+//   enum AllocationStrategy {
+//     MILIMES
+//     UNITS
+//     CUSTOM
+//     /// Θέρμανση ανά καλοριφέρ (heating split by radiator count).
+//     RADIATORS
+//     /// Ανελκυστήρας ανά όροφο (elevator cost per floor above ground).
+//     ELEVATOR_FLOORS
+//     /// Κατανομή ανά κατανάλωση μετρητών (split by per-unit meter readings).
+//     METERS
+//   }
+//
+// NOTE (orchestrator wiring): schema.prisma also needs the inverse relation
+// fields on the existing models:
+//   Building { meters Meter[] }
+//   Unit     { meters Meter[] }
+//
+// Strategy rule (documented behavior): METERS requires ≥1 reading for EVERY
+// unit of the building in the expense period; otherwise the expense creation
+// fails with 400 listing the missing units.
+
+model Meter {
+  id         String  @id @default(uuid())
+  buildingId String
+  unitId     String
+  /// WATER | HEAT — exactly one meter per unit and kind.
+  kind       String
+  label      String?
+
+  building Building       @relation(fields: [buildingId], references: [id])
+  unit     Unit           @relation(fields: [unitId], references: [id])
+  readings MeterReading[]
+
+  @@unique([unitId, kind])
+  @@index([buildingId])
+}
+
+model MeterReading {
+  id      String   @id @default(uuid())
+  meterId String
+  /// Billing period the reading belongs to (`YYYY-MM`), upserted per period.
+  period  String
+  /// Integer consumption for the period: liters (WATER) or Wh (HEAT).
+  value   Int
+  readAt  DateTime @default(now())
+
+  meter Meter @relation(fields: [meterId], references: [id])
+
+  @@unique([meterId, period])
+  @@index([meterId])
+}

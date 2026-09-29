@@ -1,0 +1,33 @@
+// MODULE_REGISTRATION.txt — Treasury (Ταμείο)
+// =============================================================================
+// Do NOT edit schema.prisma or app.module.ts directly per task instructions.
+// Merge these imports manually (or via the main agent).
+// =============================================================================
+
+1) In apps/api/src/app/app.module.ts:
+   ------------------------------------------------------------
+   import { TreasuryModule } from '../treasury/treasury.module';
+   ------------------------------------------------------------
+   Add to the `imports: [ ... ]` array (keep alphabetical-ish near PayoutsModule):
+   ------------------------------------------------------------
+     ComplianceModule,
+     BudgetsModule,
+     TransferModule,
+     PayoutsModule,
+     TreasuryModule,   // <-- add this
+     ExcelImportModule,
+   ------------------------------------------------------------
+
+2) No additional providers, guards, or global pipes required.
+   - TreasuryModule already imports AuditModule.
+   - JwtAuthGuard + RolesGuard are applied per-controller (ADMIN only).
+   - Global ThrottlerGuard is registered in AuthModule (app-wide) — treasury routes
+     automatically inherit throttling; no extra ThrottlerModule import needed.
+   - ValidationPipe is applied per-controller with { whitelist: true, forbidNonWhitelisted: true, transform: true }.
+
+3) After merging the Prisma fragment:
+     pnpm prisma generate
+     pnpm prisma migrate dev --name treasury
+
+4) Delete path: append-only ledger — no DELETE endpoint is exposed.
+   Voiding is done by posting a compensating entry with opposite amountCents.

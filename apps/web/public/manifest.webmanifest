@@ -1,0 +1,25 @@
+{
+  "name": "PolykatoikiaOS",
+  "short_name": "PolykatoikiaOS",
+  "description": "Διαχείριση πολυκατοικιών: κοινόχρηστα έξοδα, βλάβες, ψηφοφορίες.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "el",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

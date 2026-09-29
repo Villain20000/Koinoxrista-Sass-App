@@ -1,0 +1,34 @@
+ROUTES REGISTRATION — LegalModule provides LegalController (prefix: buildings/:buildingId/legal)
+
+All routes are ADMIN-only, guarded by JwtAuthGuard + RolesGuard, ValidationPipe whitelist:true, tenant-scoped via assertSameBuilding.
+
+GET    /buildings/:buildingId/legal/stats                          -> getStats   (ADMIN)
+GET    /buildings/:buildingId/legal/cases?stage=&status=            -> listCases (ADMIN) query: stage (NOTICE|LAWYER|COURT|CLOSED), status (OPEN|SENT|ACKNOWLEDGED|CLOSED)
+GET    /buildings/:buildingId/legal/cases/:id                       -> getCase   (ADMIN)
+GET    /buildings/:buildingId/legal/cases/:id/exodik                -> getExodik (ADMIN) returns text/html (exodik HTML)
+POST   /buildings/:buildingId/legal/cases                           -> createCase (ADMIN) body: { unitId, invoiceIds: string[], title?, lawyerName?, lawyerEmail?, notes? }
+POST   /buildings/:buildingId/legal/cases/:id/send-notice           -> sendNotice (ADMIN) dedupe 429 if lastSentAt <7d, generates HTML via templates/exodik.ts, updates lastSentAt/status to SENT, creates LegalEvent NOTICE_SENT, audit
+POST   /buildings/:buildingId/legal/cases/:id/advance               -> advanceStage (ADMIN) body: { nextStage: LegalStage } or { stage } ; forward-only NOTICE→LAWYER→COURT→CLOSED, creates LegalEvent ESCALATED, audit
+POST   /buildings/:buildingId/legal/cases/:id/note                  -> addNote (ADMIN) body: { note: string } ; creates LegalEvent NOTE, audit
+POST   /buildings/:buildingId/legal/cases/:id/close                 -> closeCase (ADMIN) body: { reason?: string } ; sets stage/status CLOSED, creates LegalEvent CLOSED, audit
+
+Audit mutations:
+- legal.case.created
+- legal.notice.sent
+- legal.case.escalated
+- legal.case.note
+- legal.case.closed
+
+Template: templates/exodik.ts -> renderExodikHtml(input) used by sendNotice and getExodikHtml (live data, deadline 15 days).
+
+Frontend route (add to apps/web/src/app/app.routes.ts under admin children):
+  {
+    path: 'legal',
+    loadComponent: () => import('./pages/admin/admin-legal.component').then(m => m.AdminLegalPage),
+  }
+Nav link in apps/web/src/app/layout/layout.component.ts:
+  { path: '/admin/legal', label: 'Νομικές ενέργειες' } under ADMIN NavGroup
+
+Shared types: libs/shared/src/lib/legal.ts
+Web API client: apps/web/src/app/core/api/legal-api.service.ts
+Admin page: apps/web/src/app/pages/admin/admin-legal.component.ts

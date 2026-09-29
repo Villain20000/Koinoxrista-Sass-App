@@ -1,0 +1,32 @@
+ROUTES REGISTRATION — MaintenanceModule provides 2 controllers:
+
+BuildingAssetsController  prefix: buildings/:buildingId/assets
+  GET    /buildings/:buildingId/assets                          -> listAssets   (ADMIN)
+  POST   /buildings/:buildingId/assets                          -> createAsset (ADMIN)
+  PATCH  /buildings/:buildingId/assets/:id                      -> updateAsset (ADMIN)
+  DELETE /buildings/:buildingId/assets/:id                      -> deleteAsset (ADMIN)
+
+MaintenanceController  prefix: buildings/:buildingId/maintenance
+  GET    /buildings/:buildingId/maintenance/schedules           -> listSchedules  (ADMIN) query: upcomingDays (default 30), category
+  POST   /buildings/:buildingId/maintenance/schedules           -> createSchedule (ADMIN)
+  PATCH  /buildings/:buildingId/maintenance/schedules/:id       -> updateSchedule (ADMIN)
+  DELETE /buildings/:buildingId/maintenance/schedules/:id       -> deleteSchedule (ADMIN)
+  POST   /buildings/:buildingId/maintenance/schedules/:id/done  -> markDone       (ADMIN)
+  POST   /buildings/:buildingId/maintenance/generate-jobs       -> generateDueJobs(ADMIN)
+  GET    /buildings/:buildingId/maintenance/calendar            -> getCalendar    (ADMIN) query: from, to (ISO 8601)
+
+All routes are tenant-scoped via assertSameBuilding(user, buildingId) and guarded by JwtAuthGuard + RolesGuard (ADMIN only).
+ValidationPipe with whitelist:true is applied at controller level.
+AuditService records every mutation.
+NotificationsService notifies building ADMINs when generateDueJobs creates draft Jobs (source=MAINTENANCE_SCHEDULE, status=OPEN).
+
+Frontend route (optional, add to apps/web/src/app/app.routes.ts under admin children):
+  {
+    path: 'maintenance',
+    loadComponent: () => import('./pages/admin/admin-maintenance.component').then(m => m.AdminMaintenancePage),
+  }
+And nav link in apps/web/src/app/layout/layout.component.ts:
+  { path: '/admin/maintenance', label: 'Συντήρηση' } under ADMIN NavGroup 'Διαχείριση'
+
+Shared types are exported from @org/shared (libs/shared/src/lib/maintenance.ts).
+Web API client is apps/web/src/app/core/api/maintenance-api.service.ts.

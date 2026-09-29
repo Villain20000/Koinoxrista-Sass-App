@@ -1,0 +1,3 @@
+RealtimeModule registered in apps/api/src/app/app.module.ts (imports list)
+  - Added import: import { RealtimeModule } from '../realtime/realtime.module';
+  - Added to imports array after TenancyModule
