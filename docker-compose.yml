@@ -1,6 +1,8 @@
 services:
   db:
-    image: postgres:16-alpine
+    # pgvector build of Postgres 16 — adds the `vector` extension for the RAG
+    # embeddings table (docs/LANGCHAIN_LANGGRAPH_PLAN.md, Phase 1).
+    image: pgvector/pgvector:pg16
     container_name: polyos-db
     environment:
       POSTGRES_USER: postgres

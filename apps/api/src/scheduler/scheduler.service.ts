@@ -5,6 +5,7 @@ import { Cron } from '@nestjs/schedule';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { ComplianceService } from '../compliance/compliance.service';
+import { EmbeddingsIngestionService } from '../assistant/embeddings-ingestion.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { LateFeesService } from '../late-fees/late-fees.service';
 import { MaintenanceService } from '../maintenance/maintenance.service';
@@ -20,7 +21,8 @@ export type SchedulerJobType =
   | 'reminders'
   | 'maintenance_jobs'
   | 'compliance_check'
-  | 'vote_close';
+  | 'vote_close'
+  | 'embeddings_sync';
 
 /** Disable all cron execution unless the single-job-replica gate is on. */
 const ENABLED = process.env.JOB_SCHEDULER_ENABLED === 'true';
@@ -50,6 +52,7 @@ export class SchedulerService implements OnModuleInit {
     private readonly maintenance: MaintenanceService,
     private readonly compliance: ComplianceService,
     private readonly votes: VotesService,
+    private readonly embeddingsIngestion: EmbeddingsIngestionService,
   ) {}
 
   onModuleInit(): void {
@@ -194,6 +197,29 @@ export class SchedulerService implements OnModuleInit {
     );
   }
 
+  /**
+   * Phase 1 (docs/LANGCHAIN_LANGGRAPH_PLAN.md): weekly RAG corpus refresh.
+   * Content-hash dedupe makes a no-op sync cheap; only changed/new sources
+   * hit the local Ollama embedder. period=null means it re-runs each week
+   * (JobRun idempotency is per (buildingId, jobType, period)).
+   */
+  @Cron('0 11 * * 1')
+  async embeddingsSync(): Promise<void> {
+    await this.runForAllBuildings(
+      'embeddings_sync',
+      null,
+      async (buildingId) => {
+        const result = await this.embeddingsIngestion.syncBuilding(buildingId);
+        if (result.failed > 0) {
+          throw new Error(
+            `embeddings sync: ${result.failed}/${result.sources} sources failed: ${result.errors[0] ?? ''}`,
+          );
+        }
+        return result;
+      },
+    );
+  }
+
   /** Feature 4: auto-close + tally every overdue, un-closed vote (every 10 min). */
   @Cron('*/10 * * * *')
   async voteClose(): Promise<void> {
@@ -264,6 +290,8 @@ export class SchedulerService implements OnModuleInit {
           return this.maintenance.generateDueJobs(buildingId, user);
         case 'compliance_check':
           return this.compliance.checkExpiries(buildingId, user);
+        case 'embeddings_sync':
+          return this.embeddingsIngestion.syncBuilding(buildingId);
         default:
           return null;
       }

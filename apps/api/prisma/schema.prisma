@@ -175,6 +175,8 @@ model Building {
   // Feature 20: KPI snapshots + alert rules
   weeklySnapshots    BuildingWeeklySnapshot[]
   alertRules         AlertRule[]
+  // Phase 1 (docs/LANGCHAIN_LANGGRAPH_PLAN.md): RAG embeddings (pgvector)
+  embeddingChunks    EmbeddingChunk[]
 }
 
 model Unit {
@@ -1600,4 +1602,36 @@ model AlertRule {
   building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
 
   @@unique([buildingId, metric])
+}
+
+/// Phase 1 (docs/LANGCHAIN_LANGGRAPH_PLAN.md): RAG chunk with a pgvector
+/// embedding. Managed with raw SQL (see migration 20260929000000): Prisma has
+/// no native `vector` type — the column is `Unsupported` so the client never
+/// touches it; all vector I/O goes through `$queryRaw` in EmbeddingsService.
+/// Tenant isolation: every row carries buildingId (FK cascade = GDPR erasure
+/// when a whole building is removed); per-user vector wiping rides on
+/// sourceId/sourceType deleteBySource.
+model EmbeddingChunk {
+  id             String   @id @default(cuid())
+  buildingId     String
+  /// announcement | faq | compliance | expense_category | static
+  sourceType     String
+  /// Announcement.id / ComplianceItem.id / "faq:<file>#<section>" etc.
+  sourceId       String
+  title          String
+  body           String
+  /// Raw pgvector data — read/written only via $queryRaw (Unsupported type).
+  embedding      Unsupported("vector(1024)")?
+  /// SHA-256 of title+body: skips re-embedding unchanged sources.
+  contentHash    String
+  /// Embedding model identifier (e.g. bge-m3) — invalidation key on change.
+  embeddingModel String
+  chunkIndex     Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+
+  @@unique([buildingId, sourceType, sourceId, chunkIndex])
+  @@index([buildingId])
 }

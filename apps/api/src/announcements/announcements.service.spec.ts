@@ -9,6 +9,7 @@ import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
 import { AuditService } from '../audit/audit.service';
+import { EmbeddingsIngestionService } from '../assistant/embeddings-ingestion.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -93,6 +94,7 @@ describe('AnnouncementsService', () => {
   let prisma: ReturnType<typeof makePrisma>;
   let audit: { record: jest.Mock };
   let notifications: { createForUsers: jest.Mock };
+  let ingestion: { syncAnnouncement: jest.Mock; removeAnnouncement: jest.Mock };
   let service: AnnouncementsService;
 
   beforeEach(() => {
@@ -100,6 +102,10 @@ describe('AnnouncementsService', () => {
     prisma = makePrisma();
     audit = { record: jest.fn() };
     notifications = { createForUsers: jest.fn().mockResolvedValue(undefined) };
+    ingestion = {
+      syncAnnouncement: jest.fn().mockResolvedValue(undefined),
+      removeAnnouncement: jest.fn().mockResolvedValue(undefined),
+    };
     service = new AnnouncementsService(
       prisma as unknown as PrismaService,
       audit as unknown as AuditService,
@@ -112,6 +118,7 @@ describe('AnnouncementsService', () => {
         disconnect: jest.fn(),
         merge: jest.fn(),
       } as unknown as import('../realtime/realtime.service').RealtimeService,
+      ingestion as unknown as EmbeddingsIngestionService,
     );
   });
 
@@ -268,6 +275,40 @@ describe('AnnouncementsService', () => {
         sms: { kind: 'announcement', topic: dto.title },
         body: expect.any(String),
       });
+    });
+
+    it('queues fire-and-forget RAG ingestion on create', async () => {
+      prisma.announcement.create.mockResolvedValue(announcement(dto));
+
+      await service.create('building-1', dto, admin);
+
+      expect(ingestion.syncAnnouncement).toHaveBeenCalledWith(
+        'building-1',
+        'ann-1',
+      );
+    });
+
+    it('re-indexes on title/body edits but not on pin-only updates', async () => {
+      prisma.announcement.findFirst.mockResolvedValue(announcement());
+      prisma.announcement.update.mockResolvedValue(announcement());
+
+      await service.update('ann-1', { body: 'Νέο σώμα.' }, admin);
+      expect(ingestion.syncAnnouncement).toHaveBeenCalledWith('building-1', 'ann-1');
+
+      ingestion.syncAnnouncement.mockClear();
+      await service.update('ann-1', { pinned: true }, admin);
+      expect(ingestion.syncAnnouncement).not.toHaveBeenCalled();
+    });
+
+    it('drops the RAG vectors when the announcement is deleted', async () => {
+      prisma.announcement.findFirst.mockResolvedValue(announcement());
+
+      await service.remove('ann-1', admin);
+
+      expect(ingestion.removeAnnouncement).toHaveBeenCalledWith(
+        'building-1',
+        'ann-1',
+      );
     });
 
     it('targets only residents when the audience is RESIDENTS', async () => {

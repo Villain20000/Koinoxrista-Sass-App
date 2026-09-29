@@ -41,6 +41,7 @@ import { AssemblyModule } from '../assembly/assembly.module';
 import { OpenBankingModule } from '../openbanking/openbanking.module';
 import { MetersModule } from '../meters/meters.module';
 import { AnnouncementsModule } from '../announcements/announcements.module';
+import { EmbeddingsModule } from '../assistant/embeddings.module';
 import { PaymentPlansModule } from '../payment-plans/payment-plans.module';
 import { BrandingModule } from '../branding/branding.module';
 import { MarketplaceModule } from '../marketplace/marketplace.module';
@@ -107,6 +108,10 @@ import { AssistantModule } from '../assistant/assistant.module';
     OpenBankingModule,
     MetersModule,
     AnnouncementsModule,
+    // Phase 1 (docs/LANGCHAIN_LANGGRAPH_PLAN.md): pgvector RAG embeddings.
+    // Registered after AnnouncementsModule; exports services used by the
+    // announcements hooks and the SchedulerModule weekly sync.
+    EmbeddingsModule,
     PaymentPlansModule,
     BrandingModule,
     MarketplaceModule,

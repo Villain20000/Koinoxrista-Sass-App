@@ -9,6 +9,7 @@ import { Prisma, Role } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
 import { assertSameBuilding } from '../common/tenant';
+import { EmbeddingsIngestionService } from '../assistant/embeddings-ingestion.service';
 import type { SmsContext } from '../notifications/sms-templates';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -63,6 +64,7 @@ export class AnnouncementsService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeService,
+    private readonly ingestion: EmbeddingsIngestionService,
   ) {}
 
   /** ADMIN: creates an announcement and notifies the audience in-app. */
@@ -111,6 +113,11 @@ export class AnnouncementsService {
       pinned: created.pinned,
       createdAt: created.createdAt.toISOString(),
     });
+
+    // Fire-and-forget RAG ingestion (Phase 1): a broken embeddings path must
+    // never fail the announcement. EmbeddingsService degrades to ok:false and
+    // the weekly sync cron heals any missed chunks.
+    void this.ingestion.syncAnnouncement(buildingId, created.id);
 
     return this.toDto(created);
   }
@@ -168,6 +175,12 @@ export class AnnouncementsService {
         ...(dto.pinned !== undefined ? { pinned: dto.pinned } : {}),
       },
     });
+
+    // Re-embed only when the indexed text changed (pin/audience don't matter).
+    if (dto.title !== undefined || dto.body !== undefined) {
+      void this.ingestion.syncAnnouncement(updated.buildingId, updated.id);
+    }
+
     return this.toDto(updated);
   }
 
@@ -184,6 +197,9 @@ export class AnnouncementsService {
       entityId: item.id,
       metadata: { title: item.title },
     });
+
+    // Drop the RAG vectors with the source (GDPR: no orphaned embeddings).
+    void this.ingestion.removeAnnouncement(item.buildingId, item.id);
   }
 
   /** RESIDENT/ADMIN: comment thread of one announcement, oldest first. */
