@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { AuditModule } from '../audit/audit.module';
 import { EmbeddingsModule } from '../assistant/embeddings.module';
