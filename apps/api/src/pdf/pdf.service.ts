@@ -20,23 +20,27 @@ export interface PdfFile {
 export const PDF_CONTENT_TYPE = 'application/pdf';
 
 /**
- * Resolves the bundled NotoSansJP font (Feature 5, CJK glyphs) when present.
- * Downloads are documented in apps/api/scripts/fetch-fonts.sh; without the
- * font the PDF falls back to built-in Helvetica (Latin-only).
+ * Bundled Noto Sans (SIL OFL 1.1, Latin + Greek + Cyrillic) lives in
+ * src/assets/fonts and is copied next to main.js by webpack. Without it
+ * pdfkit falls back to Helvetica/WinAnsi, which cannot encode Greek.
  */
-function resolveFontPath(): string | undefined {
-  const candidates = [
-    path.join(process.cwd(), 'assets', 'fonts', 'NotoSansJP-Regular.ttf'),
-    path.join(process.cwd(), 'assets', 'fonts', 'NotoSansJP', 'NotoSansJP-Regular.ttf'),
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return undefined;
+const FONT_DIR_CANDIDATES = [
+  path.join(__dirname, 'assets', 'fonts'),
+  path.join(__dirname, '..', 'assets', 'fonts'),
+  path.join(process.cwd(), 'assets', 'fonts'),
+  path.join(process.cwd(), 'src', 'assets', 'fonts'),
+  path.join(process.cwd(), 'apps', 'api', 'src', 'assets', 'fonts'),
+];
+
+export function resolveFontDir(): string | undefined {
+  return FONT_DIR_CANDIDATES.find((dir) =>
+    fs.existsSync(path.join(dir, 'NotoSans-Regular.ttf')),
+  );
 }
 
-const FONT_PATH = resolveFontPath();
-const FONT = FONT_PATH ? 'NotoSansJP' : 'Helvetica';
+const FONT_DIR = resolveFontDir();
+const FONT = FONT_DIR ? 'NotoSans' : 'Helvetica';
+const FONT_BOLD = FONT_DIR ? 'NotoSans-Bold' : 'Helvetica-Bold';
 
 /** Renders a pdfkit document into a Buffer (async — pdfkit streams data). */
 async function renderDoc(
@@ -47,7 +51,11 @@ async function renderDoc(
     new (options?: { size?: string; margin?: number }): PdfKit.PDFDocument;
   };
   const doc = new PDFDocument({ size: 'A4', margin: 48 });
-  if (FONT_PATH) doc.registerFont('NotoSansJP', FONT_PATH);
+  if (FONT_DIR) {
+    doc.registerFont('NotoSans', path.join(FONT_DIR, 'NotoSans-Regular.ttf'));
+    const bold = path.join(FONT_DIR, 'NotoSans-Bold.ttf');
+    doc.registerFont('NotoSans-Bold', fs.existsSync(bold) ? bold : path.join(FONT_DIR, 'NotoSans-Regular.ttf'));
+  }
   build(doc);
   doc.end();
   const chunks: Buffer[] = [];
@@ -65,7 +73,7 @@ async function renderDoc(
 export class PdfService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** GET /invoices/:id/pdf — a single 請求書 for one invoice. */
+  /** GET /invoices/:id/pdf — monthly ειδοποιητήριο for one invoice. */
   async invoicePdf(invoiceId: string, user: AuthenticatedUser): Promise<PdfFile> {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
@@ -119,7 +127,7 @@ export class PdfService {
     return {
       body,
       contentType: PDF_CONTENT_TYPE,
-      filename: `seikyu-${invoice.periodYearMonth}-${invoice.unit.label}.pdf`,
+      filename: `eidopoiitirio-${invoice.periodYearMonth}-${invoice.unit.label}.pdf`,
       etag: `${invoice.id}-${invoice.periodYearMonth}`,
     };
   }
@@ -186,7 +194,7 @@ export class PdfService {
     return {
       body,
       contentType: PDF_CONTENT_TYPE,
-      filename: `statement-${unit.label}-${year}.pdf`,
+      filename: `katastasi-${unit.label}-${year}.pdf`,
       etag: `${unit.id}-${year}`,
     };
   }
@@ -206,35 +214,31 @@ interface InvoicePdfInput {
 }
 
 function buildInvoicePdf(doc: PdfKit.PDFDocument, input: InvoicePdfInput): void {
-  doc.font(FONT).fontSize(10).fillColor('#6b7280').text('インボイス / 請求書', 48, 48, { align: 'center' });
-  doc.font(FONT).fontSize(18).fillColor(input.primaryColor).text('請求書', 48, 64, { align: 'center' });
-  doc.moveDown(1);
-  doc.font(FONT).fontSize(11).fillColor('#111827');
-  doc.text(input.orgName);
-  doc.moveDown(0.2);
+  doc.font(FONT_BOLD).fontSize(18).fillColor(input.primaryColor).text('ΕΙΔΟΠΟΙΗΤΗΡΙΟ ΚΟΙΝΟΧΡΗΣΤΩΝ', 48, 48, { align: 'center' });
+  doc.moveDown(0.6);
+  doc.font(FONT_BOLD).fontSize(11).fillColor('#111827').text(input.orgName);
   doc.font(FONT).fontSize(9).fillColor('#6b7280');
-  doc.text(`登録番号: ${input.invoiceRegistrationNo ?? '(未登録)'}`);
+  if (input.invoiceRegistrationNo) doc.text(`Αρ. μητρώου: ${input.invoiceRegistrationNo}`);
   doc.moveDown();
 
   doc.font(FONT).fontSize(11).fillColor('#111827');
-  doc.text(`部屋: ${input.unitLabel}`);
-  doc.text(`期間: ${input.periodYearMonth}`);
-  doc.text(`合計金額: ${money(input.totalCents)} 円`);
-  doc.text(`支払済み: ${money(input.paidCents)} 円`);
-  doc.text(`残高: ${money(input.totalCents - input.paidCents)} 円`);
-  doc.text(`支払状況: ${input.status === 'PAID' ? '支払済' : '未払'}`);
+  doc.text(`Διαμέρισμα: ${input.unitLabel}`);
+  doc.text(`Περίοδος: ${greekPeriod(input.periodYearMonth)}`);
+  doc.text(`Σύνολο: ${money(input.totalCents)}`);
+  doc.text(`Πληρωμένο: ${money(input.paidCents)}`);
+  doc.font(FONT_BOLD).text(`Υπόλοιπο: ${money(input.totalCents - input.paidCents)}`);
+  doc.font(FONT).text(`Κατάσταση: ${input.status === 'PAID' ? 'Εξοφλημένο' : 'Ανεξόφλητο'}`);
 
   doc.moveDown();
-  doc.font(FONT).fontSize(12).text('明細');
+  doc.font(FONT_BOLD).fontSize(12).text('Ανάλυση δαπανών');
   doc.moveDown(0.2);
   for (const item of input.lineItems) {
     doc.font(FONT).fontSize(10);
     doc.text(`${item.category} — ${item.description}`);
-    doc.font(FONT).fontSize(10);
-    doc.text(`  ${money(item.amountCents)} 円`, 100);
+    doc.text(`  ${money(item.amountCents)}`, 100);
   }
   if (input.lineItems.length === 0) {
-    doc.font(FONT).fontSize(10).text('明細なし', 100);
+    doc.font(FONT).fontSize(10).text('Δεν υπάρχουν δαπάνες', 100);
   }
 }
 
@@ -251,34 +255,45 @@ interface StatementPdfInput {
 }
 
 function buildStatementPdf(doc: PdfKit.PDFDocument, input: StatementPdfInput): void {
-  doc.font(FONT).fontSize(18).fillColor(input.primaryColor).text('年間明細書', 48, 48, { align: 'center' });
+  doc.font(FONT_BOLD).fontSize(18).fillColor(input.primaryColor).text('ΕΤΗΣΙΑ ΚΑΤΑΣΤΑΣΗ ΛΟΓΑΡΙΑΣΜΟΥ', 48, 48, { align: 'center' });
   doc.moveDown(0.6);
-  doc.font(FONT).fontSize(11).fillColor('#111827');
-  doc.text(input.orgName);
-  doc.moveDown();
-  doc.text(`部屋: ${input.unitLabel}`);
-  doc.text(`年度: ${input.year}`);
+  doc.font(FONT_BOLD).fontSize(11).fillColor('#111827').text(input.orgName);
+  doc.font(FONT).moveDown();
+  doc.text(`Διαμέρισμα: ${input.unitLabel}`);
+  doc.text(`Έτος: ${input.year}`);
   doc.moveDown();
 
-  doc.font(FONT).fontSize(12).text('月別明細');
+  doc.font(FONT_BOLD).fontSize(12).text('Χρεώσεις ανά μήνα');
   doc.moveDown(0.2);
   for (const row of input.rows) {
     doc.font(FONT).fontSize(10);
-    doc.text(`${row.period}  ${row.description}`);
-    doc.font(FONT).fontSize(10);
-    doc.text(`  ${money(row.invoicedCents)} 円`, 100);
+    doc.text(`${greekPeriod(row.period)}  ${row.description}`);
+    doc.text(`  ${money(row.invoicedCents)}`, 100);
   }
   if (input.rows.length === 0) {
-    doc.font(FONT).fontSize(10).text('データがありません', 100);
+    doc.font(FONT).fontSize(10).text('Δεν υπάρχουν δεδομένα', 100);
   }
 
   doc.moveDown();
   doc.font(FONT).fontSize(11);
-  doc.text(`年間合計: ${money(input.totalInvoicedCents)} 円`);
-  doc.text(`支払済み: ${money(input.totalPaidCents)} 円`);
-  doc.text(`残高: ${money(input.balanceCents)} 円`);
+  doc.text(`Σύνολο χρεώσεων: ${money(input.totalInvoicedCents)}`);
+  doc.text(`Πληρωμές: ${money(input.totalPaidCents)}`);
+  doc.font(FONT_BOLD).text(`Υπόλοιπο: ${money(input.balanceCents)}`);
 }
 
-function money(cents: number): string {
-  return new Intl.NumberFormat('ja-JP').format(cents / 100);
+const GREEK_MONTHS = [
+  'Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος',
+  'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος',
+];
+
+/** "2026-09" → "Σεπτέμβριος 2026". */
+export function greekPeriod(periodYearMonth: string): string {
+  const [year, month] = periodYearMonth.split('-');
+  const name = GREEK_MONTHS[Number(month) - 1];
+  return name ? `${name} ${year}` : periodYearMonth;
+}
+
+/** Cents → "1.234,56 €" (el-GR). */
+export function money(cents: number): string {
+  return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(cents / 100);
 }

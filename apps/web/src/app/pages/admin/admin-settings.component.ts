@@ -42,7 +42,7 @@ import { BuildingsApiService } from '../../core/api/buildings-api.service';
         </div>
 
         <div>
-          <label class="label" for="inv">Αριθμός 適格請求書 (T+13)</label>
+          <label class="label" for="inv">Αριθμός μητρώου τιμολόγησης (JP: T+13)</label>
           <input id="inv" class="input" formControlName="invoiceRegistrationNo" placeholder="T1234567890123" />
           @if (form.controls.invoiceRegistrationNo.invalid && form.controls.invoiceRegistrationNo.touched) {
             <p class="field-error">Πρέπει να είναι T + 13 ψηφία ή κενό.</p>

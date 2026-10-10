@@ -1,27 +1,15 @@
 #!/usr/bin/env bash
-# Downloads NotoSansJP (OFL) for the PDF module's CJK (Japanese) glyphs.
-# Place the .ttf at apps/api/assets/fonts/NotoSansJP-Regular.ttf so the
-# PdfService auto-registers it; without it PDFs render with Latin-only glyphs.
-#
-# The Google Fonts hosted Noto Sans JP is split into many webfont subsets, so
-# for a single static TTF we use the official release from the notofonts repo.
+# Re-downloads the Noto Sans (SIL OFL 1.1) fonts used by the PDF module for
+# Greek glyphs (ειδοποιητήρια / καταστάσεις). The fonts are already committed
+# under apps/api/src/assets/fonts; run this only to refresh them.
 set -euo pipefail
 
-OUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/assets/fonts"
+OUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/assets/fonts"
 mkdir -p "$OUT_DIR"
-
-URL="https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/09_NotoSansCJKjp.zip"
-ZIP_TMP="$(mktemp)"
-trap 'rm -f "$ZIP_TMP"' EXIT
-
-echo "Downloading NotoSansCJKjp.zip…"
-curl -fL "$URL" -o "$ZIP_TMP"
-
-echo "Extracting NotoSansCJKjp-Regular.otf → NotoSansJP-Regular.ttf"
-# pdfkit needs TTF (TrueType), but Noto CJK ships OTF/CFF only. pdfkit's
-# fontkit does read OpenType (CFF) via registerFont, so we accept the .otf.
-unzip -p "$ZIP_TMP" "*/OTF/Japanese/NotoSansCJKjp-Regular.otf" \
-  > "$OUT_DIR/NotoSansJP-Regular.ttf"
-
-echo "Saved to $OUT_DIR/NotoSansJP-Regular.ttf"
-ls -lh "$OUT_DIR/NotoSansJP-Regular.ttf"
+BASE="https://github.com/notofonts/notofonts.github.io/raw/main/fonts/NotoSans/hinted/ttf"
+for weight in Regular Bold; do
+  curl -fsSL -o "$OUT_DIR/NotoSans-$weight.ttf" "$BASE/NotoSans-$weight.ttf"
+done
+curl -fsSL -o "$OUT_DIR/OFL.txt" \
+  "https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt"
+echo "Fonts written to $OUT_DIR"

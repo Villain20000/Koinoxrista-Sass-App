@@ -70,9 +70,11 @@ describe('PdfService', () => {
     const file = await service.invoicePdf('invoice-1', admin());
 
     expect(file.contentType).toBe(PDF_CONTENT_TYPE);
-    expect(file.filename).toBe('seikyu-2026-08-A1.pdf');
+    expect(file.filename).toBe('eidopoiitirio-2026-08-A1.pdf');
     expect(file.body.length).toBeGreaterThan(500);
     expect(file.body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    // Greek-capable font must be embedded (Helvetica/WinAnsi cannot encode Greek).
+    expect(file.body.toString('latin1')).toContain('NotoSans');
   });
 
   it('returns 403 for a resident who does not own the unit', async () => {
