@@ -45,7 +45,11 @@ export function deriveStatus(record: {
 }
 
 function addMonths(date: Date, months: number): Date {
-  return new Date(date.setMonth(date.getMonth() + months));
+  // UTC arithmetic so periods are exact calendar months regardless of the
+  // server timezone (local setMonth drifts by ±1h across DST changes).
+  const d = new Date(date.getTime());
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d;
 }
 
 function addYears(date: Date, years: number): Date {

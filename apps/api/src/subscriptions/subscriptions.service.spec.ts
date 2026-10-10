@@ -174,6 +174,25 @@ describe('SubscriptionsService', () => {
       expect(days).toBeLessThanOrEqual(31);
     });
 
+    it('keeps an exact calendar month across a DST change (Oct→Nov)', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-10T18:00:00.000Z') });
+      try {
+        prisma.subscription.findUnique.mockResolvedValue(record());
+        prisma.subscription.update.mockResolvedValue(
+          record({ status: 'ACTIVE' }),
+        );
+
+        await service.activatePeriod('building-1');
+
+        const { data } = prisma.subscription.update.mock.calls[0][0];
+        expect((data.currentPeriodEnd as Date).toISOString()).toBe(
+          '2026-11-10T18:00:00.000Z',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('opens a one-year period for annual cycles', async () => {
       prisma.subscription.findUnique.mockResolvedValue(
         record({ billingCycle: 'ANNUAL' }),
