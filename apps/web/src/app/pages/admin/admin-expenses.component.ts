@@ -66,6 +66,14 @@ import { eurosToCents, formatEuros } from '../../ui/format';
             }
           </div>
           <div>
+            <label class="label" for="chargeTo">Χρέωση σε</label>
+            <select id="chargeTo" class="input" formControlName="chargeTo">
+              <option value="">Προεπιλογή κατηγορίας</option>
+              <option value="OCCUPANT">Ένοικο (ή ιδιοκτήτη αν ιδιοκατοικεί)</option>
+              <option value="OWNER">Μόνο ιδιοκτήτη</option>
+            </select>
+          </div>
+          <div>
             <label class="label" for="period">Περίοδος</label>
             <input id="period" type="month" class="input" formControlName="period" />
             @if (submitted() && !isValidPeriod(form.controls.period.value)) {
@@ -123,7 +131,12 @@ import { eurosToCents, formatEuros } from '../../ui/format';
                   </td>
                   <td class="font-medium">{{ expense.description }}</td>
                   <td>{{ categoryName(expense.categoryId) }}</td>
-                  <td>{{ euros(expense.totalCents) }}</td>
+                  <td>
+                    {{ euros(expense.totalCents) }}
+                    @if (expense.chargeTo === 'OWNER') {
+                      <span class="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">Ιδιοκτήτης</span>
+                    }
+                  </td>
                 </tr>
                 @if (expanded() === expense.id) {
                   <tr>
@@ -195,6 +208,7 @@ export class AdminExpensesPage implements OnInit {
     amount: new FormControl<number | null>(null, {
       validators: [Validators.required, Validators.min(0.01)],
     }),
+    chargeTo: new FormControl<'' | 'OCCUPANT' | 'OWNER'>('', { nonNullable: true }),
     period: new FormControl<string>(formatPeriod(new Date()), {
       nonNullable: true,
       validators: [
@@ -248,7 +262,7 @@ export class AdminExpensesPage implements OnInit {
   protected save(): void {
     this.submitted.set(true);
     if (!this.buildingId || this.form.invalid || this.saving()) return;
-    const { categoryId, description, amount, period } = this.form.getRawValue();
+    const { categoryId, description, amount, period, chargeTo } = this.form.getRawValue();
     if (!period || !isValidPeriod(period)) return;
     const cents = eurosToCents(amount ?? NaN);
     if (!Number.isFinite(cents) || cents <= 0) return;
@@ -259,6 +273,7 @@ export class AdminExpensesPage implements OnInit {
         description,
         totalCents: cents,
         periodYearMonth: period,
+        ...(chargeTo ? { chargeTo } : {}),
       })
       .subscribe({
         next: () => {
@@ -268,6 +283,7 @@ export class AdminExpensesPage implements OnInit {
             categoryId: '',
             description: '',
             amount: null,
+            chargeTo: '',
             period: this.periodCtrl.value,
           });
           this.submitted.set(false);

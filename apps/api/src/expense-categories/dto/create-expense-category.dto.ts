@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
-import { AllocationStrategy } from '@prisma/client';
+import { AllocationStrategy, ChargePayer } from '@prisma/client';
 
 export class CreateExpenseCategoryDto {
   @IsString()
@@ -9,4 +9,8 @@ export class CreateExpenseCategoryDto {
   @IsOptional()
   @IsEnum(AllocationStrategy)
   strategy?: AllocationStrategy;
+
+  @IsOptional()
+  @IsEnum(ChargePayer)
+  defaultChargeTo?: ChargePayer;
 }

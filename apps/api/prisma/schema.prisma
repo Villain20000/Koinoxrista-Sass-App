@@ -21,6 +21,12 @@ enum Role {
   BUILDING_OWNER
 }
 
+/// Payer of a koinoxrista charge (χρέωση ενοίκου vs ιδιοκτήτη).
+enum ChargePayer {
+  OCCUPANT
+  OWNER
+}
+
 enum AllocationStrategy {
   MILIMES
   UNITS
@@ -339,6 +345,8 @@ model ExpenseCategory {
   strategy   AllocationStrategy @default(MILIMES)
   /// Feature 19: tax rate in basis points for JP インボイス (1000 = 10%).
   taxRateBps Int                @default(1000)
+  /// Default payer for new expenses in this category (overridable per expense).
+  defaultChargeTo ChargePayer @default(OCCUPANT)
 
   building          Building           @relation(fields: [buildingId], references: [id])
   expenses          Expense[]
@@ -357,6 +365,9 @@ model Expense {
   periodYearMonth String
   createdById     String
   createdAt       DateTime @default(now())
+  /// Who bears this expense: the occupant (ένοικος, or the owner when
+  /// owner-occupied) or the owner only (ιδιοκτήτης — e.g. repairs, reserve).
+  chargeTo        ChargePayer @default(OCCUPANT)
 
   building         Building          @relation(fields: [buildingId], references: [id])
   category         ExpenseCategory   @relation(fields: [categoryId], references: [id])
@@ -392,6 +403,8 @@ model Invoice {
   totalCents      Int
   paidCents       Int           @default(0)
   status          PaymentStatus @default(PENDING)
+  /// One invoice per unit, period and payer (occupant vs owner charges).
+  payer           ChargePayer   @default(OCCUPANT)
 
   building       Building        @relation(fields: [buildingId], references: [id])
   unit           Unit            @relation(fields: [unitId], references: [id])
@@ -401,7 +414,7 @@ model Invoice {
   lateFeeCharges LateFeeCharge[]
   productOrders  ProductOrder[]
 
-  @@unique([unitId, periodYearMonth])
+  @@unique([unitId, periodYearMonth, payer])
   @@index([buildingId])
   @@index([unitId])
 }

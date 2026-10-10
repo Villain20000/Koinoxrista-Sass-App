@@ -23,6 +23,7 @@ export class ExpenseCategoriesService {
         buildingId,
         name: dto.name,
         strategy: dto.strategy ?? AllocationStrategy.MILIMES,
+        ...(dto.defaultChargeTo ? { defaultChargeTo: dto.defaultChargeTo } : {}),
       },
     });
   }

@@ -61,7 +61,12 @@ import { formatEuros } from '../../ui/format';
           <tbody>
             @for (invoice of list; track invoice.id) {
               <tr>
-                <td class="font-medium">{{ unitLabel(invoice.unitId) }}</td>
+                <td class="font-medium">
+                  {{ unitLabel(invoice.unitId) }}
+                  @if (invoice.payer === 'OWNER') {
+                    <span class="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">Ιδιοκτήτης</span>
+                  }
+                </td>
                 <td>{{ invoice.periodYearMonth }}</td>
                 <td>{{ euros(invoice.totalCents) }}</td>
                 <td><app-status-badge [status]="invoice.status" /></td>

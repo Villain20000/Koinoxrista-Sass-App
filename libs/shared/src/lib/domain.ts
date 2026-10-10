@@ -76,6 +76,14 @@ export interface Share {
   amountCents: number;
 }
 
+/** Who bears a charge: occupant (ένοικος) or owner (ιδιοκτήτης). */
+export type ChargePayer = 'OCCUPANT' | 'OWNER';
+
+export const CHARGE_PAYER_LABELS: Record<ChargePayer, string> = {
+  OCCUPANT: 'Ένοικος',
+  OWNER: 'Ιδιοκτήτης',
+};
+
 export interface Expense {
   id: string;
   buildingId: string;
@@ -85,6 +93,7 @@ export interface Expense {
   periodYearMonth: string;
   createdById: string;
   createdAt?: string;
+  chargeTo?: ChargePayer;
   shares?: Share[];
 }
 
@@ -93,6 +102,7 @@ export interface CreateExpenseDto {
   description: string;
   totalCents: number;
   periodYearMonth: string;
+  chargeTo?: ChargePayer;
 }
 
 export interface Invoice {
@@ -103,6 +113,7 @@ export interface Invoice {
   totalCents: number;
   paidCents: number;
   status: PaymentStatus;
+  payer?: ChargePayer;
 }
 
 export interface RunInvoicesDto {

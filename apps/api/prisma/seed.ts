@@ -429,7 +429,11 @@ async function main(): Promise<void> {
     const totalCents = totals.get(unit.id) ?? 0;
     const existing = await prisma.invoice.findUnique({
       where: {
-        unitId_periodYearMonth: { unitId: unit.id, periodYearMonth },
+        unitId_periodYearMonth_payer: {
+          unitId: unit.id,
+          periodYearMonth,
+          payer: 'OCCUPANT',
+        },
       },
     });
     const paidCents = existing?.paidCents ?? 0;
@@ -439,7 +443,11 @@ async function main(): Promise<void> {
         : PaymentStatus.PENDING;
     await prisma.invoice.upsert({
       where: {
-        unitId_periodYearMonth: { unitId: unit.id, periodYearMonth },
+        unitId_periodYearMonth_payer: {
+          unitId: unit.id,
+          periodYearMonth,
+          payer: 'OCCUPANT',
+        },
       },
       create: {
         buildingId: building.id,
@@ -557,9 +565,10 @@ async function main(): Promise<void> {
     for (const unit of units) {
       await prisma.invoice.upsert({
         where: {
-          unitId_periodYearMonth: {
+          unitId_periodYearMonth_payer: {
             unitId: unit.id,
             periodYearMonth: overduePeriod,
+            payer: 'OCCUPANT',
           },
         },
         create: {

@@ -126,6 +126,23 @@ describe('ExpensesService', () => {
     expect(shares.reduce((sum, s) => sum + s.amountCents, 0)).toBe(1001);
   });
 
+  it('defaults chargeTo to OCCUPANT, honours the category default and a per-expense override', async () => {
+    await service.create('building-1', createDto, user());
+    expect(tx.expense.create.mock.calls[0][0].data.chargeTo).toBe('OCCUPANT');
+
+    prisma.expenseCategory.findFirst.mockResolvedValue({
+      id: 'cat-1',
+      buildingId: 'building-1',
+      strategy: AllocationStrategy.MILIMES,
+      defaultChargeTo: 'OWNER',
+    });
+    await service.create('building-1', createDto, user());
+    expect(tx.expense.create.mock.calls[1][0].data.chargeTo).toBe('OWNER');
+
+    await service.create('building-1', { ...createDto, chargeTo: 'OCCUPANT' }, user());
+    expect(tx.expense.create.mock.calls[2][0].data.chargeTo).toBe('OCCUPANT');
+  });
+
   it('weights every unit equally for UNITS strategy', async () => {
     prisma.expenseCategory.findFirst.mockResolvedValue({
       id: 'cat-units',

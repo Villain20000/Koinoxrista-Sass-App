@@ -1,4 +1,4 @@
-import { aggregateRun, RunExpenseInput } from './run-invoices';
+import { aggregateRun, aggregateRunByPayer, RunExpenseInput } from './run-invoices';
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -94,5 +94,21 @@ describe('aggregateRun', () => {
     ];
 
     expect(aggregateRun(expenses)).toEqual(aggregateRun([...expenses].reverse()));
+  });
+});
+
+describe('aggregateRunByPayer', () => {
+  it('keeps occupant and owner totals apart and preserves the grand total', () => {
+    const result = aggregateRunByPayer([
+      { chargeTo: 'OCCUPANT', shares: [{ unitId: 'b', amountCents: 10 }, { unitId: 'a', amountCents: 5 }] },
+      { chargeTo: 'OWNER', shares: [{ unitId: 'a', amountCents: 7 }] },
+      { shares: [{ unitId: 'a', amountCents: 1 }] },
+    ]);
+    expect(result).toEqual([
+      { unitId: 'a', payer: 'OCCUPANT', totalCents: 6 },
+      { unitId: 'a', payer: 'OWNER', totalCents: 7 },
+      { unitId: 'b', payer: 'OCCUPANT', totalCents: 10 },
+    ]);
+    expect(result.reduce((sum, row) => sum + row.totalCents, 0)).toBe(23);
   });
 });

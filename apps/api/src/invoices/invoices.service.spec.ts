@@ -4,7 +4,7 @@ import { PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { InvoicesService } from './invoices.service';
+import { InvoicesService, visibleInvoiceFilters } from './invoices.service';
 import type { AuthenticatedUser } from '../auth/auth.types';
 
 const auditStub = (): AuditService =>
@@ -99,14 +99,14 @@ describe('InvoicesService', () => {
       { shares: [{ unitId: 'unit-a', amountCents: 25 }] },
     ]);
     prisma.invoice.findMany.mockResolvedValue([
-      { unitId: 'unit-a', paidCents: 0 },
-      { unitId: 'unit-b', paidCents: 0 },
+      { unitId: 'unit-a', payer: 'OCCUPANT', paidCents: 0 },
+      { unitId: 'unit-b', payer: 'OCCUPANT', paidCents: 0 },
     ]);
 
     await service.run('building-1', { periodYearMonth: '2026-08' }, user());
 
     const upserts = prisma.invoice.upsert.mock.calls.map((c) => c[0]);
-    const byUnit = new Map(upserts.map((u) => [u.where.unitId_periodYearMonth.unitId, u]));
+    const byUnit = new Map(upserts.map((u) => [u.where.unitId_periodYearMonth_payer.unitId, u]));
     expect(byUnit.get('unit-a').create.totalCents).toBe(625);
     expect(byUnit.get('unit-a').update.status).toBe(PaymentStatus.PENDING);
     expect(byUnit.get('unit-b').create.totalCents).toBe(400);
@@ -117,14 +117,14 @@ describe('InvoicesService', () => {
       { shares: [{ unitId: 'unit-a', amountCents: 625 }, { unitId: 'unit-b', amountCents: 375 }] },
     ]);
     prisma.invoice.findMany.mockResolvedValue([
-      { unitId: 'unit-a', paidCents: 625 },
-      { unitId: 'unit-b', paidCents: 100 },
+      { unitId: 'unit-a', payer: 'OCCUPANT', paidCents: 625 },
+      { unitId: 'unit-b', payer: 'OCCUPANT', paidCents: 100 },
     ]);
 
     await service.run('building-1', { periodYearMonth: '2026-08' }, user());
 
     const upserts = prisma.invoice.upsert.mock.calls.map((c) => c[0]);
-    const byUnit = new Map(upserts.map((u) => [u.where.unitId_periodYearMonth.unitId, u]));
+    const byUnit = new Map(upserts.map((u) => [u.where.unitId_periodYearMonth_payer.unitId, u]));
     expect(byUnit.get('unit-a').update).toEqual({
       totalCents: 625,
       status: PaymentStatus.PAID,
@@ -153,7 +153,7 @@ describe('InvoicesService', () => {
       ['owner-1', 'owner-2'],
       {
         type: 'invoice.issued',
-        title: 'Νέο κοινοχρήστους λόγος',
+        title: 'Νέο ειδοποιητήριο κοινοχρήστων',
         linkPath: '/balance',
         sms: { kind: 'invoice.issued', periodKey: '2026-08' },
       },
@@ -166,24 +166,81 @@ describe('InvoicesService', () => {
     ).rejects.toThrow(ForbiddenException);
   });
 
-  it('resolves my invoices through my ownerships, newest period first', async () => {
-    prisma.ownership.findMany.mockResolvedValue([
-      { unitId: 'unit-a' },
-      { unitId: 'unit-b' },
+  it('splits owner-borne charges into a separate OWNER invoice', async () => {
+    prisma.expense.findMany.mockResolvedValue([
+      { chargeTo: 'OCCUPANT', shares: [{ unitId: 'unit-a', amountCents: 600 }, { unitId: 'unit-b', amountCents: 400 }] },
+      { chargeTo: 'OWNER', shares: [{ unitId: 'unit-a', amountCents: 300 }, { unitId: 'unit-b', amountCents: 200 }] },
     ]);
+
+    await service.run('building-1', { periodYearMonth: '2026-08' }, user());
+
+    const upserts = prisma.invoice.upsert.mock.calls.map((c) => c[0]);
+    const byKey = new Map(
+      upserts.map((u) => [
+        `${u.where.unitId_periodYearMonth_payer.unitId}|${u.where.unitId_periodYearMonth_payer.payer}`,
+        u,
+      ]),
+    );
+    expect(upserts).toHaveLength(4);
+    expect(byKey.get('unit-a|OCCUPANT').create.totalCents).toBe(600);
+    expect(byKey.get('unit-a|OWNER').create.totalCents).toBe(300);
+    expect(byKey.get('unit-a|OWNER').create.payer).toBe('OWNER');
+    expect(byKey.get('unit-b|OWNER').create.totalCents).toBe(200);
+    const sum = upserts.reduce((acc, u) => acc + u.create.totalCents, 0);
+    expect(sum).toBe(1500);
+  });
+
+  it('creates no OWNER invoice when all charges are occupant-borne', async () => {
+    prisma.expense.findMany.mockResolvedValue([
+      { chargeTo: 'OCCUPANT', shares: [{ unitId: 'unit-a', amountCents: 600 }, { unitId: 'unit-b', amountCents: 400 }] },
+    ]);
+
+    await service.run('building-1', { periodYearMonth: '2026-08' }, user());
+
+    const payers = prisma.invoice.upsert.mock.calls.map((c) => c[0].where.unitId_periodYearMonth_payer.payer);
+    expect(payers).toEqual(['OCCUPANT', 'OCCUPANT']);
+  });
+
+  it('resolves my invoices through my ownerships, newest period first', async () => {
+    prisma.ownership.findMany
+      .mockResolvedValueOnce([
+        { unitId: 'unit-a', occupantType: 'OWNER' },
+        { unitId: 'unit-b', occupantType: 'OWNER' },
+      ])
+      .mockResolvedValueOnce([]);
     prisma.invoice.findMany.mockResolvedValue([]);
 
     await service.findMine('2026-07', user({ role: 'RESIDENT', id: 'resident-1' }));
 
     expect(prisma.ownership.findMany).toHaveBeenCalledWith({
       where: { userId: 'resident-1' },
-      select: { unitId: true },
+      select: { unitId: true, occupantType: true },
     });
     expect(prisma.invoice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { unitId: { in: ['unit-a', 'unit-b'] }, periodYearMonth: '2026-07' },
+        where: { OR: [{ unitId: 'unit-a' }, { unitId: 'unit-b' }], periodYearMonth: '2026-07' },
         orderBy: { periodYearMonth: 'desc' },
       }),
     );
+  });
+});
+
+describe('visibleInvoiceFilters', () => {
+  it('tenant sees only occupant invoices of the rented unit', () => {
+    expect(
+      visibleInvoiceFilters('t1', [{ unitId: 'u1', occupantType: 'TENANT' }], [{ unitId: 'u1', userId: 't1' }]),
+    ).toEqual([{ unitId: 'u1', payer: 'OCCUPANT' }]);
+  });
+
+  it('owner of a rented-out unit sees only owner invoices', () => {
+    expect(
+      visibleInvoiceFilters('o1', [{ unitId: 'u1', occupantType: 'OWNER' }], [{ unitId: 'u1', userId: 't1' }]),
+    ).toEqual([{ unitId: 'u1', payer: 'OWNER' }]);
+  });
+
+  it('owner-occupier sees both occupant and owner invoices', () => {
+    expect(visibleInvoiceFilters('o1', [{ unitId: 'u1', occupantType: 'OWNER' }], [])).toEqual([
+      { unitId: 'u1' },
+    ]);
   });
 });

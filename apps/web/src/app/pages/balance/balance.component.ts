@@ -81,7 +81,12 @@ export function isMockCheckout(checkoutUrl: string): boolean {
           <tbody>
             @for (invoice of invoices(); track invoice.id) {
               <tr>
-                <td class="font-medium">{{ invoice.periodYearMonth }}</td>
+                <td class="font-medium">
+                  {{ invoice.periodYearMonth }}
+                  @if (invoice.payer === 'OWNER') {
+                    <span class="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-800">Ιδιοκτήτης</span>
+                  }
+                </td>
                 <td>{{ euros(invoice.totalCents) }}</td>
                 <td>{{ euros(invoice.paidCents) }}</td>
                 <td><app-status-badge [status]="invoice.status" /></td>

@@ -1,4 +1,5 @@
-import { IsInt, IsString, Min, MinLength } from 'class-validator';
+import { ChargePayer } from '@prisma/client';
+import { IsEnum, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
 
 export class CreateExpenseDto {
   @IsString()
@@ -14,4 +15,9 @@ export class CreateExpenseDto {
 
   @IsString()
   periodYearMonth!: string;
+
+  /** Ένοικος (OCCUPANT) or ιδιοκτήτης (OWNER); defaults to the category default. */
+  @IsOptional()
+  @IsEnum(ChargePayer)
+  chargeTo?: ChargePayer;
 }

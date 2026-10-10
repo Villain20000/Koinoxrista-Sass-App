@@ -73,6 +73,7 @@ export class ExpensesService {
           totalCents: dto.totalCents,
           periodYearMonth: dto.periodYearMonth,
           createdById: user.id,
+          chargeTo: dto.chargeTo ?? category.defaultChargeTo ?? 'OCCUPANT',
         },
       });
       await tx.share.createMany({
@@ -97,6 +98,7 @@ export class ExpensesService {
       metadata: {
         totalCents: dto.totalCents,
         periodYearMonth: dto.periodYearMonth,
+        chargeTo: expense.chargeTo,
       },
     });
     return expense;

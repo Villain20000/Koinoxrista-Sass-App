@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { PaymentStatus, Prisma } from '@prisma/client';
+import { ChargePayer, PaymentStatus, Prisma } from '@prisma/client';
 
 import { AuthenticatedUser } from '../auth/auth.types';
 import { TOTAL_MILLIMES } from '@org/shared';
@@ -14,7 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { aggregateRun } from './run-invoices';
+import { aggregateRunByPayer } from './run-invoices';
 import { RunInvoicesDto } from './dto/run-invoices.dto';
 
 const INVOICE_WITH_UNIT = Prisma.validator<Prisma.InvoiceInclude>()({
@@ -57,34 +57,58 @@ export class InvoicesService {
 
     const expenses = await this.prisma.expense.findMany({
       where: { buildingId, periodYearMonth },
-      include: { shares: { select: { unitId: true, amountCents: true } } },
+      select: {
+        chargeTo: true,
+        shares: { select: { unitId: true, amountCents: true } },
+      },
     });
     if (expenses.length === 0) {
       throw new BadRequestException('no expenses for period');
     }
 
-    const totals = new Map(aggregateRun(expenses).map((entry) => [entry.unitId, entry.totalCents]));
+    const key = (unitId: string, payer: ChargePayer) => `${unitId}|${payer}`;
+    const totals = new Map(
+      aggregateRunByPayer(expenses).map((entry) => [
+        key(entry.unitId, entry.payer),
+        entry.totalCents,
+      ]),
+    );
     const existing = await this.prisma.invoice.findMany({
       where: { buildingId, periodYearMonth },
     });
-    const paidByUnitId = new Map(existing.map((invoice) => [invoice.unitId, invoice.paidCents]));
+    const paidByKey = new Map(
+      existing.map((invoice) => [key(invoice.unitId, invoice.payer), invoice.paidCents]),
+    );
+
+    // Every unit always gets an occupant invoice (even €0, as before); an
+    // owner invoice is only created when owner-borne charges exist (or one
+    // was issued earlier and must be re-totalled).
+    const targets: Array<{ unitId: string; payer: ChargePayer }> = [];
+    for (const unit of building.units) {
+      targets.push({ unitId: unit.id, payer: ChargePayer.OCCUPANT });
+      const ownerKey = key(unit.id, ChargePayer.OWNER);
+      if (totals.has(ownerKey) || paidByKey.has(ownerKey)) {
+        targets.push({ unitId: unit.id, payer: ChargePayer.OWNER });
+      }
+    }
 
     await this.prisma.$transaction(
-      building.units.map((unit) => {
-        const totalCents = totals.get(unit.id) ?? 0;
-        const paidCents = paidByUnitId.get(unit.id) ?? 0;
+      targets.map(({ unitId, payer }) => {
+        const totalCents = totals.get(key(unitId, payer)) ?? 0;
+        const paidCents = paidByKey.get(key(unitId, payer)) ?? 0;
         const status =
           totalCents > 0 && paidCents >= totalCents
             ? PaymentStatus.PAID
             : PaymentStatus.PENDING;
         return this.prisma.invoice.upsert({
           where: {
-            unitId_periodYearMonth: { unitId: unit.id, periodYearMonth },
+            unitId_periodYearMonth_payer: { unitId, periodYearMonth, payer },
           },
           create: {
             buildingId,
-            unitId: unit.id,
+            unitId,
             periodYearMonth,
+            payer,
             totalCents,
             paidCents,
             status,
@@ -101,7 +125,7 @@ export class InvoicesService {
       action: 'invoice.run',
       entity: 'invoice',
       entityId: periodYearMonth,
-      metadata: { units: building.units.length },
+      metadata: { units: building.units.length, invoices: targets.length },
     });
 
     void this.notifyOwners(buildingId, periodYearMonth);
@@ -122,7 +146,7 @@ export class InvoicesService {
       owners.map((owner) => owner.userId),
       {
         type: 'invoice.issued',
-        title: 'Νέο κοινοχρήστους λόγος',
+        title: 'Νέο ειδοποιητήριο κοινοχρήστων',
         linkPath: '/balance',
         sms: { kind: 'invoice.issued', periodKey: periodYearMonth },
       },
@@ -152,16 +176,21 @@ export class InvoicesService {
   ) {
     const ownerships = await this.prisma.ownership.findMany({
       where: { userId: user.id },
-      select: { unitId: true },
+      select: { unitId: true, occupantType: true },
     });
-    const unitIds = ownerships.map((ownership) => ownership.unitId);
-    if (unitIds.length === 0) {
+    if (ownerships.length === 0) {
       throw new ForbiddenException('User owns no units');
     }
+    const unitIds = [...new Set(ownerships.map((ownership) => ownership.unitId))];
+    const tenantRows = await this.prisma.ownership.findMany({
+      where: { unitId: { in: unitIds }, occupantType: 'TENANT' },
+      select: { unitId: true, userId: true },
+    });
+    const visibility = visibleInvoiceFilters(user.id, ownerships, tenantRows);
 
     return this.prisma.invoice.findMany({
       where: {
-        unitId: { in: unitIds },
+        OR: visibility,
         ...(periodYearMonth ? { periodYearMonth } : {}),
       },
       include: INVOICE_WITH_UNIT,
@@ -173,7 +202,34 @@ export class InvoicesService {
     return this.prisma.invoice.findMany({
       where: { buildingId, periodYearMonth },
       include: INVOICE_WITH_UNIT,
-      orderBy: { unit: { label: 'asc' } },
+      orderBy: [{ unit: { label: 'asc' } }, { payer: 'asc' }],
     });
   }
+}
+
+/**
+ * Which invoices a resident sees on /balance:
+ *  - a TENANT sees only the occupant invoice of the units they rent;
+ *  - an OWNER sees the owner invoice, plus the occupant invoice when nobody
+ *    else is registered as tenant of that unit (owner-occupied).
+ */
+export function visibleInvoiceFilters(
+  userId: string,
+  ownerships: Array<{ unitId: string; occupantType: string }>,
+  tenantRows: Array<{ unitId: string; userId: string }>,
+): Prisma.InvoiceWhereInput[] {
+  const rentedOut = new Set(
+    tenantRows.filter((row) => row.userId !== userId).map((row) => row.unitId),
+  );
+  const filters: Prisma.InvoiceWhereInput[] = [];
+  for (const { unitId, occupantType } of ownerships) {
+    if (occupantType === 'TENANT') {
+      filters.push({ unitId, payer: ChargePayer.OCCUPANT });
+    } else if (rentedOut.has(unitId)) {
+      filters.push({ unitId, payer: ChargePayer.OWNER });
+    } else {
+      filters.push({ unitId });
+    }
+  }
+  return filters;
 }
