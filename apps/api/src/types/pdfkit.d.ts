@@ -6,7 +6,13 @@ declare namespace PdfKit {
   }
 
   interface PDFDocument {
+    x: number;
+    y: number;
     end(): void;
+    moveTo(x: number, y: number): this;
+    lineTo(x: number, y: number): this;
+    strokeColor(color: string): this;
+    stroke(): this;
     on(event: string, listener: (...args: unknown[]) => void): this;
     font(
       name?: string,
@@ -20,6 +26,7 @@ declare namespace PdfKit {
       y?: number,
       options?: PDFTextOptions,
     ): this;
+    text(text: string, options?: PDFTextOptions): this;
     moveDown(lines?: number): this;
     registerFont(name: string, src: string): this;
     pipe(dest: unknown): unknown;

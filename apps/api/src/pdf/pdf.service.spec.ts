@@ -7,12 +7,14 @@ import { PDF_CONTENT_TYPE, PdfService } from './pdf.service';
 type PrismaMock = {
   invoice: {
     findUnique: jest.Mock;
+    findMany?: jest.Mock;
   };
   expense: {
     findMany: jest.Mock;
   };
   ownership: {
     findFirst: jest.Mock;
+    findMany?: jest.Mock;
   };
   unit: {
     findUnique: jest.Mock;
@@ -41,12 +43,20 @@ const invoiceRow = () => ({
   totalCents: 6000,
   paidCents: 0,
   status: 'PENDING',
+  payer: 'OCCUPANT',
   unit: {
     id: 'unit-1',
     label: 'A1',
+    floor: 1,
+    millimes: 85,
+    radiatorCount: 6,
+    squareMeters: 72,
+    shareFraction: null,
     building: {
       id: 'building-1',
       name: 'Ηλέκτρα',
+      address: 'Τσιμισκή 10',
+      city: 'Θεσσαλονίκη',
       invoiceRegistrationNo: 'T1234567890123',
       branding: null,
     },
@@ -54,6 +64,8 @@ const invoiceRow = () => ({
 });
 
 function buildService(prisma: Partial<PrismaMock>): PdfService {
+  if (prisma.invoice && !prisma.invoice.findMany) prisma.invoice.findMany = jest.fn().mockResolvedValue([]);
+  if (prisma.ownership && !prisma.ownership.findMany) prisma.ownership.findMany = jest.fn().mockResolvedValue([]);
   return new PdfService(prisma as unknown as PrismaService);
 }
 
@@ -102,6 +114,37 @@ describe('PdfService', () => {
 
     await expect(service.invoicePdf('invoice-9', admin())).rejects.toThrow(
       NotFoundException,
+    );
+  });
+
+  it('renders the per-column notice with previous balance for a Greek building', async () => {
+    const prisma: PrismaMock = {
+      invoice: {
+        findUnique: jest.fn().mockResolvedValue({ ...invoiceRow(), totalCents: 2150 }),
+        findMany: jest.fn().mockResolvedValue([{ totalCents: 1000, paidCents: 400 }]),
+      },
+      expense: {
+        findMany: jest.fn().mockResolvedValue([
+          { description: 'Καθαριότητα', totalCents: 12000, chargeTo: 'OCCUPANT', category: { id: 'g', name: 'Γενικά', strategy: 'MILIMES' }, shares: [{ amountCents: 1020 }] },
+          { description: 'Πετρέλαιο', totalCents: 20000, chargeTo: 'OCCUPANT', category: { id: 'h', name: 'Θέρμανση', strategy: 'RADIATORS' }, shares: [{ amountCents: 1130 }] },
+          { description: 'Ταράτσα', totalCents: 50000, chargeTo: 'OWNER', category: { id: 'g', name: 'Γενικά', strategy: 'MILIMES' }, shares: [{ amountCents: 4250 }] },
+        ]),
+      },
+      ownership: {
+        findFirst: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([
+          { occupantType: 'OWNER', user: { firstName: 'Μαρία', lastName: 'Ιωάννου' } },
+        ]),
+      },
+      unit: { findUnique: jest.fn() },
+    };
+    const file = await buildService(prisma).invoicePdf('invoice-1', admin());
+
+    expect(file.body.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    expect(prisma.invoice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ unitId: 'unit-1', payer: 'OCCUPANT', status: { not: 'PAID' } }),
+      }),
     );
   });
 });

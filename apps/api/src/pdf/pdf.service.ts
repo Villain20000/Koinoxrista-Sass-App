@@ -9,6 +9,7 @@ import * as path from 'node:path';
 import { AuthenticatedUser } from '../auth/auth.types';
 import { assertSameBuilding } from '../common/tenant';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildMonthlyNotice, MonthlyNotice, PAYER_LABELS } from './monthly-notice';
 
 export interface PdfFile {
   body: Buffer;
@@ -98,37 +99,62 @@ export class PdfService {
         periodYearMonth: invoice.periodYearMonth,
       },
       include: { shares: { where: { unitId: invoice.unitId } }, category: true },
+      orderBy: { createdAt: 'asc' },
     });
-    const lineItems = expenses
-      .map((expense) => ({
-        description: expense.description,
-        category: expense.category.name,
-        amountCents: expense.shares[0]?.amountCents ?? 0,
-      }))
-      .filter((item) => item.amountCents > 0);
+    const earlier = await this.prisma.invoice.findMany({
+      where: {
+        unitId: invoice.unitId,
+        payer: invoice.payer,
+        periodYearMonth: { lt: invoice.periodYearMonth },
+        status: { not: 'PAID' },
+      },
+      select: { totalCents: true, paidCents: true },
+    });
+    const previousBalanceCents = (earlier ?? []).reduce(
+      (sum, row) => sum + Math.max(0, row.totalCents - row.paidCents),
+      0,
+    );
+    const ownerships = await this.prisma.ownership.findMany({
+      where: { unitId: invoice.unitId },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+    const wantTenant = invoice.payer !== 'OWNER';
+    const holders = (ownerships ?? []).filter((o) =>
+      wantTenant ? o.occupantType === 'TENANT' : o.occupantType !== 'TENANT',
+    );
+    const names = (holders.length ? holders : ownerships ?? [])
+      .map((o) => `${o.user.firstName} ${o.user.lastName}`.trim())
+      .join(', ');
+
+    const notice = buildMonthlyNotice({
+      unit: invoice.unit,
+      payer: invoice.payer ?? 'OCCUPANT',
+      expenses,
+      invoiceTotalCents: invoice.totalCents,
+      paidCents: invoice.paidCents,
+      previousBalanceCents,
+    });
 
     const building = invoice.unit.building;
     const branding = building.branding;
     const body = await renderDoc((doc) =>
-      buildInvoicePdf(doc, {
-        buildingName: building.name,
+      buildNoticePdf(doc, {
         orgName: branding?.orgName ?? building.name,
+        address: [building.address, building.city].filter(Boolean).join(', '),
         primaryColor: branding?.primaryColor ?? '#1e40af',
-        invoiceRegistrationNo: building.invoiceRegistrationNo ?? null,
         unitLabel: invoice.unit.label,
+        names,
         periodYearMonth: invoice.periodYearMonth,
-        totalCents: invoice.totalCents,
-        paidCents: invoice.paidCents,
         status: invoice.status,
-        lineItems,
+        notice,
       }),
     );
 
     return {
       body,
       contentType: PDF_CONTENT_TYPE,
-      filename: `eidopoiitirio-${invoice.periodYearMonth}-${invoice.unit.label}.pdf`,
-      etag: `${invoice.id}-${invoice.periodYearMonth}`,
+      filename: `eidopoiitirio-${invoice.periodYearMonth}-${invoice.unit.label}${invoice.payer === 'OWNER' ? '-idioktitis' : ''}.pdf`,
+      etag: `${invoice.id}-${invoice.totalCents}-${invoice.paidCents}`,
     };
   }
 
@@ -200,46 +226,86 @@ export class PdfService {
   }
 }
 
-interface InvoicePdfInput {
-  buildingName: string;
+interface NoticePdfInput {
   orgName: string;
+  address: string;
   primaryColor: string;
-  invoiceRegistrationNo: string | null;
   unitLabel: string;
+  names: string;
   periodYearMonth: string;
-  totalCents: number;
-  paidCents: number;
   status: string;
-  lineItems: { description: string; category: string; amountCents: number }[];
+  notice: MonthlyNotice;
 }
 
-function buildInvoicePdf(doc: PdfKit.PDFDocument, input: InvoicePdfInput): void {
-  doc.font(FONT_BOLD).fontSize(18).fillColor(input.primaryColor).text('ΕΙΔΟΠΟΙΗΤΗΡΙΟ ΚΟΙΝΟΧΡΗΣΤΩΝ', 48, 48, { align: 'center' });
+/** Monthly ειδοποιητήριο: header, per-column table, totals. */
+function buildNoticePdf(doc: PdfKit.PDFDocument, input: NoticePdfInput): void {
+  const { notice } = input;
+  const left = 48;
+  const width = 499;
+  doc.font(FONT_BOLD).fontSize(16).fillColor(input.primaryColor)
+    .text('ΕΙΔΟΠΟΙΗΤΗΡΙΟ ΚΟΙΝΟΧΡΗΣΤΩΝ', left, 48, { width, align: 'center' as const });
+  doc.font(FONT).fontSize(10).fillColor('#374151')
+    .text(greekPeriod(input.periodYearMonth), { width, align: 'center' as const });
+  doc.moveDown(0.8);
+
+  doc.font(FONT_BOLD).fontSize(11).fillColor('#111827').text(input.orgName, left);
+  if (input.address) doc.font(FONT).fontSize(9).fillColor('#6b7280').text(input.address, left);
+  doc.moveDown(0.5);
+  doc.font(FONT).fontSize(10).fillColor('#111827');
+  doc.text(`Διαμέρισμα: ${input.unitLabel}`, left);
+  if (input.names) doc.text(`Υπόχρεος: ${input.names}`, left);
+  doc.text(`Χρέωση: ${PAYER_LABELS[notice.payer]}`, left);
+  doc.moveDown(0.8);
+
+  const cols = [
+    { title: 'Στήλη', x: left, w: 130 },
+    { title: 'Κατανομή', x: left + 130, w: 110 },
+    { title: 'Συντελεστής', x: left + 240, w: 80 },
+    { title: 'Σύνολο κτιρίου', x: left + 320, w: 90 },
+    { title: 'Μερίδιο', x: left + 410, w: 89 },
+  ];
+  const row = (cells: string[], bold = false, size = 9) => {
+    const y = doc.y;
+    doc.font(bold ? FONT_BOLD : FONT).fontSize(size).fillColor('#111827');
+    let maxY = y;
+    cells.forEach((cell, i) => {
+      doc.text(cell, cols[i].x, y, { width: cols[i].w - 4, align: i >= 3 ? ('right' as const) : ('left' as const) });
+      maxY = Math.max(maxY, doc.y);
+    });
+    doc.y = maxY + 2;
+    doc.x = left;
+  };
+  row(cols.map((c) => c.title), true);
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).strokeColor('#9ca3af').stroke();
+  doc.y += 3;
+  for (const column of notice.columns) {
+    row([column.name, column.strategyLabel, column.coefficient, money(column.buildingCents), money(column.unitCents)], true);
+    for (const line of column.lines) {
+      row([`   ${line.description}`, '', '', money(line.buildingCents), money(line.unitCents)], false, 8);
+    }
+  }
+  if (notice.columns.length === 0) {
+    doc.font(FONT).fontSize(9).text('Δεν υπάρχουν χρεώσεις για την περίοδο.', left);
+  }
+  doc.moveTo(left, doc.y).lineTo(left + width, doc.y).strokeColor('#9ca3af').stroke();
   doc.moveDown(0.6);
-  doc.font(FONT_BOLD).fontSize(11).fillColor('#111827').text(input.orgName);
-  doc.font(FONT).fontSize(9).fillColor('#6b7280');
-  if (input.invoiceRegistrationNo) doc.text(`Αρ. μητρώου: ${input.invoiceRegistrationNo}`);
-  doc.moveDown();
 
-  doc.font(FONT).fontSize(11).fillColor('#111827');
-  doc.text(`Διαμέρισμα: ${input.unitLabel}`);
-  doc.text(`Περίοδος: ${greekPeriod(input.periodYearMonth)}`);
-  doc.text(`Σύνολο: ${money(input.totalCents)}`);
-  doc.text(`Πληρωμένο: ${money(input.paidCents)}`);
-  doc.font(FONT_BOLD).text(`Υπόλοιπο: ${money(input.totalCents - input.paidCents)}`);
-  doc.font(FONT).text(`Κατάσταση: ${input.status === 'PAID' ? 'Εξοφλημένο' : 'Ανεξόφλητο'}`);
-
-  doc.moveDown();
-  doc.font(FONT_BOLD).fontSize(12).text('Ανάλυση δαπανών');
-  doc.moveDown(0.2);
-  for (const item of input.lineItems) {
-    doc.font(FONT).fontSize(10);
-    doc.text(`${item.category} — ${item.description}`);
-    doc.text(`  ${money(item.amountCents)}`, 100);
-  }
-  if (input.lineItems.length === 0) {
-    doc.font(FONT).fontSize(10).text('Δεν υπάρχουν δαπάνες', 100);
-  }
+  const total = (label: string, cents: number, bold = false) => {
+    const y = doc.y;
+    doc.font(bold ? FONT_BOLD : FONT).fontSize(bold ? 11 : 10).fillColor('#111827');
+    doc.text(label, left + 240, y, { width: 170 });
+    doc.text(money(cents), left + 410, y, { width: 85, align: 'right' });
+    doc.x = left;
+  };
+  total('Κοινόχρηστα περιόδου', notice.periodCents);
+  if (notice.previousBalanceCents > 0) total('Προηγούμενο υπόλοιπο', notice.previousBalanceCents);
+  if (notice.paidCents > 0) total('Πληρωμές περιόδου', -notice.paidCents);
+  total('ΠΛΗΡΩΤΕΟ ΠΟΣΟ', notice.dueCents, true);
+  doc.moveDown(1);
+  doc.font(FONT).fontSize(8).fillColor('#6b7280').text(
+    input.status === 'PAID' ? 'Η χρέωση της περιόδου έχει εξοφληθεί.' : 'Παρακαλούμε εξοφλήστε μέσω της εφαρμογής (κάρτα / IRIS).',
+    left,
+  );
 }
 
 interface StatementPdfInput {
