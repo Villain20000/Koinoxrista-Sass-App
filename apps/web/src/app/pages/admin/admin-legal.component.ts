@@ -195,8 +195,8 @@ function eventBadgeClass(type: string): string {
 
     <!-- Create modal -->
     @if (showCreate()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeCreateModal()">
-        <div class="card w-full max-w-xl" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" tabindex="-1" (click)="closeCreateModal()" (keydown.escape)="closeCreateModal()">
+        <div class="card w-full max-w-xl" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <h2 class="card-title">Νέα νομική υπόθεση — επιλογή από οφειλές</h2>
           <form [formGroup]="createForm" (ngSubmit)="createCase()" class="flex flex-col gap-4">
             <div>
@@ -212,7 +212,7 @@ function eventBadgeClass(type: string): string {
 
             @if (createUnitInvoices().length > 0) {
               <div>
-                <label class="label">Τιμολόγια οφειλής *</label>
+                <span class="label">Τιμολόγια οφειλής *</span>
                 <div class="max-h-48 overflow-y-auto rounded border border-slate-200">
                   @for (inv of createUnitInvoices(); track inv.id) {
                     <label class="flex items-center gap-2 px-3 py-2 hover:bg-slate-50">
@@ -337,8 +337,8 @@ function eventBadgeClass(type: string): string {
 
     <!-- Exodik preview modal -->
     @if (exodikHtml(); as html) {
-      <div class="fixed inset-0 z-50 flex flex-col bg-slate-900/60 p-4" (click)="closeExodik()">
-        <div class="mx-auto flex w-full max-w-4xl flex-1 flex-col rounded-lg bg-white shadow-xl" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex flex-col bg-slate-900/60 p-4" tabindex="-1" (click)="closeExodik()" (keydown.escape)="closeExodik()">
+        <div class="mx-auto flex w-full max-w-4xl flex-1 flex-col rounded-lg bg-white shadow-xl" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <div class="flex items-center justify-between border-b border-slate-200 p-3">
             <h2 class="text-sm font-semibold">Προεπισκόπηση εξωδίκου</h2>
             <div class="flex gap-2">

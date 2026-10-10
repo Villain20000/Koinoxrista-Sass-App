@@ -18,10 +18,10 @@ export interface OcrResult {
   amounts: number[]; // all detected cents
 }
 
-const AFM_REGEX = /(?:ΑΦΜ|AFM)?\s*[:\-]?\s*(\d{9})/i;
+const AFM_REGEX = /(?:ΑΦΜ|AFM)?\s*[:-]?\s*(\d{9})/i;
 const DATE_PATTERNS: RegExp[] = [
-  /(\d{4})[-\/.](\d{2})[-\/.](\d{2})/, // YYYY-MM-DD
-  /(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})/, // DD/MM/YYYY or DD-MM-YYYY
+  /(\d{4})[-/.](\d{2})[-/.](\d{2})/, // YYYY-MM-DD
+  /(\d{2})[/.-](\d{2})[/.-](\d{4})/, // DD/MM/YYYY or DD-MM-YYYY
 ];
 
 const EURO_TOKEN = /(?:€|EUR|ευρώ)/i;
@@ -104,7 +104,7 @@ function extractAmounts(text: string): number[] {
 
 function extractAfm(text: string): string | null {
   // Try explicit AFM label first
-  const labeled = /(?:ΑΦΜ|AFM)\s*[:\-]?\s*(\d{9})/i.exec(text);
+  const labeled = /(?:ΑΦΜ|AFM)\s*[:-]?\s*(\d{9})/i.exec(text);
   if (labeled) return labeled[1];
   // Fallback: any 9-digit standalone number that is not part of longer number
   const generic = /\b(\d{9})\b/.exec(text);
@@ -117,14 +117,14 @@ function extractAfm(text: string): string | null {
 
 function extractDate(text: string): string | null {
   // Try YYYY-MM-DD first
-  let m = /(\d{4})[-\/.](\d{2})[-\/.](\d{2})/.exec(text);
+  let m = /(\d{4})[-/.](\d{2})[-/.](\d{2})/.exec(text);
   if (m) {
     const iso = `${m[1]}-${m[2]}-${m[3]}`;
     const d = new Date(iso);
     if (!Number.isNaN(d.getTime())) return iso;
   }
   // Try DD/MM/YYYY
-  m = /(\d{2})[\/.\-](\d{2})[\/.\-](\d{4})/.exec(text);
+  m = /(\d{2})[/.-](\d{2})[/.-](\d{4})/.exec(text);
   if (m) {
     const iso = `${m[3]}-${m[2]}-${m[1]}`;
     const d = new Date(iso);
@@ -141,7 +141,7 @@ function extractIssuerName(text: string): string | null {
   if (lines.length === 0) return null;
   // Look for explicit label
   for (const line of lines) {
-    const lm = /(?:Προμηθευτής|Supplier|Επωνυμία|Issuer|Εκδότης)\s*[:\-]\s*(.+)/i.exec(line);
+    const lm = /(?:Προμηθευτής|Supplier|Επωνυμία|Issuer|Εκδότης)\s*[:-]\s*(.+)/i.exec(line);
     if (lm) return lm[1].trim().slice(0, 200);
   }
   // Fallback: first line that is not a date/amount/afm

@@ -197,7 +197,7 @@ export class LegalService {
     userMaybe?: AuthenticatedUser,
   ): Promise<any> {
     // Support both getCase(buildingId, caseId, user) and getCase(caseId, user) where buildingId is caseId
-    let buildingIdResolved = buildingId;
+    const buildingIdResolved = buildingId;
     let caseId: string;
     let user: AuthenticatedUser | undefined;
     if (caseIdOrUser && typeof caseIdOrUser === 'object' && 'role' in (caseIdOrUser as any)) {

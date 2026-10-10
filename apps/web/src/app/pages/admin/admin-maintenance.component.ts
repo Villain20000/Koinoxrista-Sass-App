@@ -248,8 +248,8 @@ function statusChip(schedule: MaintenanceScheduleDto | CalendarEventDto): { labe
 
     <!-- Asset Modal -->
     @if (showAssetModal()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeAssetModal()">
-        <div class="card w-full max-w-lg" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" tabindex="-1" (click)="closeAssetModal()" (keydown.escape)="closeAssetModal()">
+        <div class="card w-full max-w-lg" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <h2 class="card-title">{{ editingAssetId() ? 'Επεξεργασία παγίου' : 'Νέο πάγιο' }}</h2>
           <form [formGroup]="assetForm" (ngSubmit)="saveAsset()" class="flex flex-col gap-4">
             <div>
@@ -288,8 +288,8 @@ function statusChip(schedule: MaintenanceScheduleDto | CalendarEventDto): { labe
 
     <!-- Schedule Modal -->
     @if (showScheduleModal()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeScheduleModal()">
-        <div class="card w-full max-w-lg" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" tabindex="-1" (click)="closeScheduleModal()" (keydown.escape)="closeScheduleModal()">
+        <div class="card w-full max-w-lg" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <h2 class="card-title">{{ editingScheduleId() ? 'Επεξεργασία συντήρησης' : 'Νέα προγραμματισμένη συντήρηση' }}</h2>
           <form [formGroup]="scheduleForm" (ngSubmit)="saveSchedule()" class="flex flex-col gap-4">
             <div>

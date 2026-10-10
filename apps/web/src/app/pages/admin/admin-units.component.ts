@@ -104,7 +104,7 @@ import { ownerName } from '../../ui/format';
               <td>{{ unit.floor ?? '—' }}</td>
               <td>{{ unit.millimes }}‰</td>
               <td>{{ unit.squareMeters ?? '—' }}</td>
-              <td>{{ unit.shareFraction != null ? unit.shareFraction + '‰' : '—' }}</td>
+              <td>{{ (unit.shareFraction ?? null) !== null ? unit.shareFraction + '‰' : '—' }}</td>
               <td>
                 {{ ownersLabel(unit) }}
               </td>

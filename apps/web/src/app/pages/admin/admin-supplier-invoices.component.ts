@@ -205,8 +205,8 @@ const STATUS_META: Record<SupplierInvoiceStatus, StatusMeta> = {
 
     <!-- Manual modal -->
     @if (showManual()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="showManual.set(false)">
-        <div class="card w-full max-w-lg" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" tabindex="-1" (click)="showManual.set(false)" (keydown.escape)="showManual.set(false)">
+        <div class="card w-full max-w-lg" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <h2 class="card-title">Χειροκίνητο τιμολόγιο (DRAFT)</h2>
           <form [formGroup]="manualForm" (ngSubmit)="submitManual()" class="flex flex-col gap-4">
             <div>
@@ -255,8 +255,8 @@ const STATUS_META: Record<SupplierInvoiceStatus, StatusMeta> = {
 
     <!-- JSON modal -->
     @if (showJson()) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="showJson.set(false)">
-        <div class="card w-full max-w-lg" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" tabindex="-1" (click)="showJson.set(false)" (keydown.escape)="showJson.set(false)">
+        <div class="card w-full max-w-lg" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <h2 class="card-title">Εισαγωγή από myDATA JSON (IMPORTED)</h2>
           <p class="mb-3 text-xs text-slate-500">Επικολλήστε το JSON που λάβατε από myDATA (RequestDocs). Υποστηρίζονται διάφορες δομές με αυτόματη εξαγωγή πεδίων.</p>
           <textarea
@@ -276,8 +276,8 @@ const STATUS_META: Record<SupplierInvoiceStatus, StatusMeta> = {
 
     <!-- Match modal -->
     @if (showMatch(); as inv) {
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="showMatch.set(null)">
-        <div class="card w-full max-w-lg" (click)="$event.stopPropagation()">
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" tabindex="-1" (click)="showMatch.set(null)" (keydown.escape)="showMatch.set(null)">
+        <div class="card w-full max-w-lg" role="dialog" aria-modal="true" tabindex="-1" (click)="$event.stopPropagation()" (keyup)="$event.stopPropagation()">
           <h2 class="card-title">Αντιστοίχιση — {{ inv.issuerName }}</h2>
           <p class="mb-3 text-sm text-slate-600">{{ euros(inv.totalCents) }} · {{ formatDate(inv.issueDate) }} · {{ inv.classification || '—' }}</p>
           <div class="flex flex-col gap-3">
