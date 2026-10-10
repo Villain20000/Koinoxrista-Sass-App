@@ -35,11 +35,82 @@ jobs:
       - name: Generate Prisma client
         run: pnpm exec prisma generate --schema=apps/api/prisma/schema.prisma
 
-      # Unit tests must not require a database - no services are started yet.
-      # A Postgres service container will be added when API e2e tests arrive.
+      # Unit tests must not require a database; API e2e runs in the job below.
       - name: Lint, test and build
         run: pnpm nx run-many -t lint test build --all
 
       # Future use: restrict to projects affected by the change set instead.
       # - name: Lint, test and build (affected)
       #   run: pnpm nx affected -t lint test build
+
+  api-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: polykatoikiaos
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/polykatoikiaos?schema=public
+      JWT_ACCESS_SECRET: ci-access-secret
+      JWT_REFRESH_SECRET: ci-refresh-secret
+      APP_BASE_URL: http://localhost:4200
+      NODE_ENV: test
+      # The suite logs in many times from one IP; raise auth budgets for CI only.
+      RATE_LOGIN_LIMIT: '1000'
+      RATE_REGISTER_LIMIT: '1000'
+      RATE_AUTH_LIMIT: '1000'
+      LOGIN_LOCKOUT_THRESHOLD: '1000'
+      THROTTLE_LIMIT: '10000'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Migrate and seed database
+        working-directory: apps/api
+        run: |
+          pnpm exec prisma generate
+          pnpm exec prisma migrate deploy
+          pnpm exec prisma db seed
+
+      - name: Build API
+        run: pnpm nx run api:build
+
+      - name: Start API
+        run: |
+          nohup node dist/apps/api/main.js > api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/api/health && exit 0
+            sleep 1
+          done
+          cat api.log
+          exit 1
+
+      - name: Run API e2e
+        working-directory: apps/api-e2e
+        run: pnpm exec jest -c jest.config.cjs --ci --runInBand
+
+      - name: API log on failure
+        if: failure()
+        run: cat api.log || true
