@@ -79,8 +79,8 @@ export class GoCardlessAdapter implements BankFeedAdapter {
       throw new NotConfiguredError();
     }
     this.baseUrl = (
-      config.baseUrl ??
-      process.env.GC_BASE_URL ??
+      config.baseUrl ||
+      process.env.GC_BASE_URL ||
       DEFAULT_GOCARDLESS_BASE_URL
     ).replace(/\/+$/, '');
     this.fetchFn = config.fetchFn ?? globalThis.fetch.bind(globalThis);
