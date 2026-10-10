@@ -7,8 +7,8 @@
 export const throttleDefaults = {
   globalLimit: Number(process.env.THROTTLE_LIMIT ?? 100),
   globalTtlMs: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
-  authLimit: 10,
-  authTtlMs: 60_000,
+  authLimit: Number(process.env.RATE_AUTH_LIMIT ?? 10),
+  authTtlMs: Number(process.env.RATE_AUTH_TTL_MS ?? 60_000),
 };
 
 /** Per-route named budgets applied via `@Throttle({ default: {...} })`. */
@@ -36,6 +36,6 @@ export const routes = {
 } as const;
 
 /** Number of consecutive failed logins that triggers a lockout. */
-export const LOGIN_LOCKOUT_THRESHOLD = 5;
+export const LOGIN_LOCKOUT_THRESHOLD = Number(process.env.LOGIN_LOCKOUT_THRESHOLD ?? 5);
 /** Lockout window in ms (sliding). */
 export const LOGIN_LOCKOUT_TTL_MS = 15 * 60 * 1000;

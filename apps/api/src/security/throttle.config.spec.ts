@@ -36,8 +36,34 @@ describe('throttleDefaults', () => {
     });
   });
 
-  it('keeps fixed auth limits regardless of env', () => {
+  it('defaults auth budgets to 10 / min and login to 5 / 15 min', () => {
     expect(throttleDefaults.authLimit).toBe(10);
     expect(throttleDefaults.authTtlMs).toBe(60_000);
+    jest.resetModules();
+    jest.isolateModules(() => {
+      delete process.env.RATE_LOGIN_LIMIT;
+      delete process.env.RATE_LOGIN_TTL_MS;
+      const { routes } =
+        require('./throttle.config') as typeof import('./throttle.config');
+      expect(routes.login.limit).toBe(5);
+      expect(routes.login.ttlMs).toBe(15 * 60 * 1000);
+    });
+  });
+
+  it('lets test environments raise login/auth budgets via env', () => {
+    process.env.RATE_LOGIN_LIMIT = '1000';
+    process.env.RATE_AUTH_LIMIT = '500';
+    jest.resetModules();
+    try {
+      jest.isolateModules(() => {
+        const fresh =
+          require('./throttle.config') as typeof import('./throttle.config');
+        expect(fresh.routes.login.limit).toBe(1000);
+        expect(fresh.throttleDefaults.authLimit).toBe(500);
+      });
+    } finally {
+      delete process.env.RATE_LOGIN_LIMIT;
+      delete process.env.RATE_AUTH_LIMIT;
+    }
   });
 });
