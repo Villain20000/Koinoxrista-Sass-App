@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 
 import { AuthenticatedUser } from '../auth/auth.types';
-import { isValidPeriod } from '@org/shared';
+import { checkMillesimalTables, isValidPeriod } from '@org/shared';
 import { assertSameBuilding } from '../common/tenant';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -50,6 +50,23 @@ export class ExpensesService {
     });
     if (units.length === 0) {
       throw new BadRequestException('Building has no units to allocate to');
+    }
+
+    // Allocating by an incomplete χιλιοστά table would silently re-scale the
+    // shares; refuse instead so the admin fixes the table first.
+    const table =
+      category.strategy === 'MILIMES'
+        ? 'millimes'
+        : category.strategy === 'SHARE_FRACTION'
+          ? 'shareFraction'
+          : null;
+    if (table) {
+      const check = checkMillesimalTables(units).find((c) => c.table === table);
+      if (!check || !check.ok) {
+        throw new BadRequestException(
+          check?.message ?? 'Δεν έχει οριστεί πίνακας ποσοστών συνιδιοκτησίας.',
+        );
+      }
     }
 
     const splits: SplitResult[] = isMetersStrategy(category.strategy)

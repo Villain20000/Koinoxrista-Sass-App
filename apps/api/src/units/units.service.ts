@@ -8,7 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { AuthenticatedUser } from '../auth/auth.types';
-import { TOTAL_MILLIMES } from '@org/shared';
+import { checkMillesimalTables, TOTAL_MILLIMES } from '@org/shared';
 import { assertSameBuilding } from '../common/tenant';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
@@ -36,6 +36,18 @@ export class UnitsService {
     });
   }
 
+  /** GET /buildings/:id/units/millimes-check — χιλιοστά tables must sum to 1000‰. */
+  async millimesCheck(buildingId: string, user: AuthenticatedUser) {
+    assertSameBuilding(user, buildingId);
+    await this.requireBuilding(buildingId);
+    const units = await this.prisma.unit.findMany({
+      where: { buildingId },
+      select: { millimes: true, shareFraction: true },
+    });
+    const checks = checkMillesimalTables(units);
+    return { ok: checks.every((check) => check.ok), checks };
+  }
+
   async create(
     buildingId: string,
     dto: CreateUnitDto,
@@ -43,6 +55,9 @@ export class UnitsService {
   ) {
     assertSameBuilding(user, buildingId);
     await this.assertMillimesWithinLimit(buildingId, dto.millimes);
+    if (dto.shareFraction !== undefined && dto.shareFraction !== null) {
+      await this.assertShareFractionWithinLimit(buildingId, dto.shareFraction);
+    }
 
     return this.prisma.unit.create({
       data: {
@@ -72,6 +87,14 @@ export class UnitsService {
     const nextMillimes = dto.millimes ?? unit.millimes;
     if (nextMillimes !== unit.millimes) {
       await this.assertMillimesWithinLimit(buildingId, nextMillimes, unitId);
+    }
+
+    if (
+      dto.shareFraction !== undefined &&
+      dto.shareFraction !== null &&
+      dto.shareFraction !== unit.shareFraction
+    ) {
+      await this.assertShareFractionWithinLimit(buildingId, dto.shareFraction, unitId);
     }
 
     return this.prisma.unit.update({
@@ -127,6 +150,26 @@ export class UnitsService {
     if (currentTotal + additionalMillimes > TOTAL_MILLIMES) {
       throw new BadRequestException(
         `Units would total ${currentTotal + additionalMillimes} millimes; current total is ${currentTotal} and the maximum is ${TOTAL_MILLIMES}`,
+      );
+    }
+  }
+
+  private async assertShareFractionWithinLimit(
+    buildingId: string,
+    additional: number,
+    excludeUnitId?: string,
+  ): Promise<void> {
+    const aggregate = await this.prisma.unit.aggregate({
+      where: {
+        buildingId,
+        ...(excludeUnitId ? { id: { not: excludeUnitId } } : {}),
+      },
+      _sum: { shareFraction: true },
+    });
+    const currentTotal = aggregate._sum.shareFraction ?? 0;
+    if (currentTotal + additional > TOTAL_MILLIMES) {
+      throw new BadRequestException(
+        `Τα ποσοστά συνιδιοκτησίας θα αθροίζουν ${currentTotal + additional}‰ (μέγιστο ${TOTAL_MILLIMES}‰).`,
       );
     }
   }

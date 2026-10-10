@@ -119,3 +119,59 @@ export interface Invoice {
 export interface RunInvoicesDto {
   periodYearMonth: string;
 }
+
+export interface MillesimalTableCheck {
+  table: 'millimes' | 'shareFraction';
+  /** Sum over units that have a value for this table. */
+  total: number;
+  /** Units with a value (shareFraction is optional per unit). */
+  unitsWithValue: number;
+  unitCount: number;
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * Validates that the χιλιοστά tables of a building sum to exactly 1000‰.
+ * The general millimes table is mandatory; the shareFraction table is only
+ * checked when at least one unit uses it (then every unit must have it).
+ */
+export function checkMillesimalTables(
+  units: Array<{ millimes: number; shareFraction?: number | null }>,
+): MillesimalTableCheck[] {
+  const millimesTotal = units.reduce((sum, u) => sum + u.millimes, 0);
+  const checks: MillesimalTableCheck[] = [
+    {
+      table: 'millimes',
+      total: millimesTotal,
+      unitsWithValue: units.length,
+      unitCount: units.length,
+      ok: units.length > 0 && millimesTotal === TOTAL_MILLIMES,
+      message:
+        millimesTotal === TOTAL_MILLIMES
+          ? 'Ο πίνακας γενικών χιλιοστών αθροίζει 1000‰.'
+          : `Ο πίνακας γενικών χιλιοστών αθροίζει ${millimesTotal}‰ αντί για ${TOTAL_MILLIMES}‰ (διαφορά ${TOTAL_MILLIMES - millimesTotal}‰).`,
+    },
+  ];
+  const withShare = units.filter(
+    (u) => u.shareFraction !== null && u.shareFraction !== undefined,
+  );
+  if (withShare.length > 0) {
+    const total = withShare.reduce((sum, u) => sum + (u.shareFraction ?? 0), 0);
+    const complete = withShare.length === units.length;
+    const ok = complete && total === TOTAL_MILLIMES;
+    checks.push({
+      table: 'shareFraction',
+      total,
+      unitsWithValue: withShare.length,
+      unitCount: units.length,
+      ok,
+      message: ok
+        ? 'Ο πίνακας ποσοστών συνιδιοκτησίας αθροίζει 1000‰.'
+        : !complete
+          ? `Λείπει ποσοστό συνιδιοκτησίας σε ${units.length - withShare.length} διαμέρισμα(τα).`
+          : `Ο πίνακας ποσοστών συνιδιοκτησίας αθροίζει ${total}‰ αντί για ${TOTAL_MILLIMES}‰.`,
+    });
+  }
+  return checks;
+}

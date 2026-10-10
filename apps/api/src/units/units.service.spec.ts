@@ -219,4 +219,24 @@ describe('UnitsService', () => {
     ).rejects.toThrow(ForbiddenException);
     expect(prisma.unit.aggregate).not.toHaveBeenCalled();
   });
+
+  it('reports χιλιοστά table status via millimesCheck', async () => {
+    prisma.unit.findMany.mockResolvedValue([
+      { millimes: 600, shareFraction: null },
+      { millimes: 300, shareFraction: null },
+    ]);
+    const result = await service.millimesCheck('building-1', user());
+    expect(result.ok).toBe(false);
+    expect(result.checks[0]).toMatchObject({ table: 'millimes', total: 900 });
+  });
+
+  it('rejects a shareFraction that would push the table over 1000‰', async () => {
+    prisma.unit.aggregate
+      .mockResolvedValueOnce({ _sum: { millimes: 0 } })
+      .mockResolvedValueOnce({ _sum: { shareFraction: 950 } });
+    await expect(
+      service.create('building-1', { label: 'Β2', floor: 2, millimes: 100, shareFraction: 100 }, user()),
+    ).rejects.toThrow(/1050‰/);
+  });
 });
+

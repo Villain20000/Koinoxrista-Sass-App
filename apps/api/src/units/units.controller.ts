@@ -36,6 +36,15 @@ export class UnitsController {
     return this.unitsService.listForBuilding(buildingId, user);
   }
 
+  @Get('millimes-check')
+  @Roles(Role.ADMIN)
+  millimesCheck(
+    @Param('buildingId') buildingId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.unitsService.millimesCheck(buildingId, user);
+  }
+
   @Post()
   @Roles(Role.ADMIN)
   create(

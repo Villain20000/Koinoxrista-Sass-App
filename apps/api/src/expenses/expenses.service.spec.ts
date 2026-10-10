@@ -143,6 +143,15 @@ describe('ExpensesService', () => {
     expect(tx.expense.create.mock.calls[2][0].data.chargeTo).toBe('OCCUPANT');
   });
 
+  it('refuses a MILIMES expense when the χιλιοστά table does not sum to 1000', async () => {
+    prisma.unit.findMany.mockResolvedValue([
+      { id: 'unit-a', millimes: 600 },
+      { id: 'unit-b', millimes: 390 },
+    ]);
+    await expect(service.create('building-1', createDto, user())).rejects.toThrow(/990‰/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it('weights every unit equally for UNITS strategy', async () => {
     prisma.expenseCategory.findFirst.mockResolvedValue({
       id: 'cat-units',
